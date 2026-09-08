@@ -48,6 +48,11 @@ const errors = [];
 async function launch() {
   desktop = await electron.launch({ args: [root], env, timeout: 30000 });
   page = await desktop.firstWindow();
+  await desktop.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    window.webContents.setBackgroundThrottling(false);
+    window.hide();
+  });
   page.on("pageerror", (e) => errors.push(e.message));
   await page.waitForFunction(() => !!window.relay);
   await page.locator('.app-shell[data-ready="true"]').waitFor();
@@ -57,6 +62,18 @@ async function api(name, args = {}) {
     name,
     args,
   });
+}
+async function screenshot(options) {
+  await desktop.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].showInactive(),
+  );
+  try {
+    await page.screenshot(options);
+  } finally {
+    await desktop.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].hide(),
+    );
+  }
 }
 async function until(fn, timeout = 12000) {
   const start = Date.now();
@@ -102,7 +119,7 @@ async function until(fn, timeout = 12000) {
       );
       if (filename === "sample.php") {
         await page.locator(".tok-keyword").first().waitFor();
-        await page.screenshot({
+        await screenshot({
           path: path.join(root, "artifacts/syntax-php.png"),
         });
       }
@@ -167,9 +184,11 @@ async function until(fn, timeout = 12000) {
     );
     console.log("Desktop check: terminal I/O passed");
     // Closing a window leaves the same PTY alive.
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].close(),
-    );
+    await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.showInactive();
+      window.close();
+    });
     assert.equal(
       await desktop.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0].isVisible(),
@@ -180,9 +199,7 @@ async function until(fn, timeout = 12000) {
       (await api("state")).sessions.find((s) => s.id === shell.id).status,
       "running",
     );
-    await desktop.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].show(),
-    );
+    // CDP input works while hidden; avoid taking focus from the user's apps.
     console.log("Desktop check: background continuity passed");
     const build = await api("terminal:start", {
       projectId,
@@ -324,7 +341,7 @@ async function until(fn, timeout = 12000) {
       );
     };
     await checkViewport();
-    await page.screenshot({ path: path.join(root, "artifacts/workspace.png") });
+    await screenshot({ path: path.join(root, "artifacts/workspace.png") });
     console.log("Desktop check: layouts passed");
     const shells = [shell];
     for (let i = 1; i < 4; i++)
@@ -402,7 +419,7 @@ async function until(fn, timeout = 12000) {
       .getByRole("combobox", { name: "Session in pane 1", exact: true })
       .selectOption(shell.id);
     await checkViewport();
-    await page.screenshot({
+    await screenshot({
       path: path.join(root, "artifacts/terminal-grid.png"),
     });
     await page
@@ -450,7 +467,7 @@ async function until(fn, timeout = 12000) {
     await until(async () =>
       (await api("state")).agents[0].memory.includes("accessible controls"),
     );
-    await page.screenshot({
+    await screenshot({
       path: path.join(root, "artifacts/agent-memory.png"),
     });
     await page
@@ -482,12 +499,12 @@ async function until(fn, timeout = 12000) {
     }
     await until(async () => (await page.locator(".trench-card").count()) === 4);
     await checkViewport();
-    await page.screenshot({
+    await screenshot({
       path: path.join(root, "artifacts/agent-board.png"),
     });
     await page.getByRole("button", { name: "Usage", exact: true }).click();
     await page.getByText("Build history", { exact: true }).waitFor();
-    await page.screenshot({ path: path.join(root, "artifacts/usage.png") });
+    await screenshot({ path: path.join(root, "artifacts/usage.png") });
     const menu = await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu().items.map((i) => i.label.replaceAll("&", "")),
     );
@@ -583,9 +600,9 @@ async function until(fn, timeout = 12000) {
         await page.getByRole("alert").allTextContents(),
       );
       console.error("Renderer errors:", errors);
-      await page
-        .screenshot({ path: path.join(root, "artifacts/failure.png") })
-        .catch(() => {});
+      await screenshot({
+        path: path.join(root, "artifacts/failure.png"),
+      }).catch(() => {});
     }
     throw error;
   } finally {

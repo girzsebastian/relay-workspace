@@ -26,6 +26,8 @@ Validation date: September 8, 2026. Host: Apple Silicon macOS (Darwin 25.4.0). E
 
 The core tests cover corrupt-state preservation, interrupted runtime excluding downtime, bounded output, path traversal, symlink escape rejection on macOS, conflicting file edits, executable mode preservation, provider endpoint and history contracts, cache accounting, missing usage, error-key redaction, and literal Windows command launcher construction. Additional tests cover draft-to-tab migration, provider task arguments, exact OpenCode recovery, named-agent ownership/skills/duplicate-run prevention, and literal external-editor launch paths.
 
+GitHub CI passed the core tests, production build, desktop integration (including forced restart and PTY I/O), and native unsigned packaging on both macOS and Windows for application commit `eaabdbc77c6d5c1352f7da421c89ec3ae15dc8dc`: [successful workflow](https://github.com/girzsebastian/relay-workspace/actions/runs/34233386884). Release documentation and test-window isolation do not alter that verified application payload.
+
 ## Artifacts
 
 - `release/mac-arm64/Relay.app` — Apple Silicon Mac application.
@@ -33,11 +35,11 @@ The core tests cover corrupt-state preservation, interrupted runtime excluding d
 - `release/Relay.Setup.0.3.1.exe` — Windows x64 installer, cross-built on macOS.
 - `artifacts/syntax-php.png`, `artifacts/agent-memory.png`, `artifacts/workspace.png`, `artifacts/terminal-grid.png`, `artifacts/agent-board.png`, `artifacts/usage.png` — desktop screenshots using temporary **test fixture data**, not user work or fabricated usage.
 
-Mac builds have no Developer ID signing or notarization. Windows builds have no trusted publisher signature. The cross-built Windows app skips executable resource editing and uses node-pty's included Windows prebuilds; test on a real Windows machine before distributing it. Native Windows CI builds should be preferred for release candidates.
+Mac builds have no Developer ID signing or notarization. Windows builds have no trusted publisher signature. The cross-built Windows app skips executable resource editing and uses node-pty's included Windows prebuilds; the downloaded NSIS installer still needs an installation check on a Windows machine. Native Windows CI builds should be preferred for release candidates.
 
 ## Not yet verified
 
-- Windows installation, UI, PTY behavior, CLI launch, OS key encryption, or restart recovery on real Windows hardware/VM.
+- The cross-built Windows NSIS installer, authenticated provider CLI launch, and OS key encryption round trips. Source-level UI, PTY, and restart recovery checks have passed on the GitHub Windows runner.
 - Intel Mac runtime or packaging.
 - Live OpenAI/Anthropic model requests, billing accuracy against provider invoices, API cancellation, or OS credential storage round trips. No real AI requests or billing were triggered by the tests. API request/response contracts were tested with synthetic responses.
 - End-to-end authenticated Codex, Claude Code, or OpenCode conversations launched from Relay. The installed CLI help was inspected and command construction is tested, but tests do not consume subscription tokens.
@@ -50,4 +52,4 @@ Mac builds have no Developer ID signing or notarization. Windows builds have no 
 
 This is a usable local alpha, not the full commercial product brief. There is no account service, subscription checkout, sync, cloud execution, VS Code extension host, unattended agent orchestration, or CLI subscription token collector. API chat is text-only and cannot inspect project files or execute tools. Codex exact recovery needs a linked session ID; otherwise its official picker is used.
 
-The next acceptance gate is a real Windows run plus live provider testing with a deliberately chosen account/model and usage budget, followed by signed installers and backup/retention controls.
+The next acceptance gate is testing the Windows installer plus live provider testing with a deliberately chosen account/model and usage budget, followed by signed installers and backup/retention controls.

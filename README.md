@@ -144,7 +144,7 @@ npm run dist:mac         # macOS disk image and ZIP, run on a Mac
 npm run dist:win         # Windows NSIS installer, run on Windows
 ```
 
-The desktop test opens visible windows, uses temporary data, runs harmless shell commands, then force-stops and relaunches its own isolated test instance. It does not submit real AI requests or read your existing CLI conversations.
+The desktop test uses an isolated window and temporary data, runs harmless shell commands, then force-stops and relaunches its own test instance. It briefly exercises window hiding; automation otherwise keeps the window hidden to avoid receiving normal desktop keyboard input. It does not submit real AI requests or read your existing CLI conversations.
 
 The GitHub Actions workflow checks macOS and Windows and uploads unsigned application directories. Check the workflow result for the exact commit being used. Windows native-module builds may require Visual Studio C++ tools if a compatible prebuilt node-pty binary is unavailable. macOS source builds require Xcode command-line tools.
 
