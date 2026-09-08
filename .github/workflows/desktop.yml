@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   desktop:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +23,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run test:desktop
+        timeout-minutes: 4
       - run: npm run pack
       - uses: actions/upload-artifact@v4
         with:

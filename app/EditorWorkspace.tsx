@@ -1,3 +1,5 @@
+import FileIcon from "./FileIcon";
+import { languageForFile } from "./languages";
 import { useEffect, useRef, useState } from "react";
 import { Columns2, FileCode2, RotateCcw, Save, X } from "lucide-react";
 import Editor from "./Editor";
@@ -214,7 +216,7 @@ export default function EditorWorkspace({
                   title={tab.path}
                   onClick={() => select(tab.path, pane)}
                 >
-                  <FileCode2 size={13} />
+                  <FileIcon path={tab.path} />
                   <span>{tab.path.split(/[\\/]/).at(-1)}</span>
                   {tab.dirty && (
                     <i className="dirty-dot" title="Unsaved draft" />
@@ -277,7 +279,9 @@ export default function EditorWorkspace({
               }}
             />
             <div className="editor-footer">
-              <span>{draft.path.split(".").at(-1)?.toUpperCase()} · UTF-8</span>
+              <span>
+                {languageForFile(draft.path)?.name || "Plain text"} · UTF-8
+              </span>
               <span>
                 {draft.dirty ? "Draft saved locally" : "Saved to file"}
               </span>

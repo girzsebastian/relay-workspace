@@ -253,8 +253,8 @@ export default function TerminalDeck({
               ) : (
                 <div className="empty-terminal">
                   <TerminalSquare size={25} />
-                  <h3>A place for your next session</h3>
-                  <p>Claude, Codex, OpenCode, or a shell.</p>
+                  <h3>No session</h3>
+
                   <button
                     className="button"
                     disabled={!projects.length}

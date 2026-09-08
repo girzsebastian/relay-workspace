@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { migrateAgents } = require("./agent-state.cjs");
 
 function atomicWrite(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -22,6 +23,7 @@ function initialState() {
     chats: [],
     usage: [],
     agents: [],
+    tasks: [],
     settings: { provider: "openai", models: { openai: "", anthropic: "" } },
     ui: {
       view: "overview",
@@ -71,7 +73,7 @@ class Store {
             "The app stopped before the reply was saved. Provider usage for that request is unknown.";
         }
     } else this.data = initialState();
-    this.data.agents ??= [];
+    migrateAgents(this.data);
     this.data.ui = { ...initialState().ui, ...this.data.ui };
     if (this.data.ui.view === "overview") this.data.ui.view = "workspace";
     for (const project of this.data.projects)

@@ -397,3 +397,139 @@ test("external editor paths remain literal on macOS and Windows", () => {
   });
   assert.throws(() => editorLaunchSpec("code", project, "win32"), /Install/);
 });
+
+test("every provider launch registers one board agent; recovery and migration keep its identity", (t) => {
+  const { migrateAgents } = require("../desktop/agent-state.cjs");
+  const dir = temp(t),
+    store = new Store(dir),
+    exits = [];
+  store.data.projects.push({ id: "p", path: dir });
+  const manager = new Terminals(
+    store,
+    () => {},
+    {
+      spawn: () => ({
+        onData() {},
+        onExit(fn) {
+          exits.push(fn);
+        },
+        kill() {},
+        resize() {},
+        write() {},
+      }),
+    },
+    { resolveExecutable: () => "/fake/cli" },
+  );
+  t.after(() => manager.shutdown());
+  for (const kind of ["codex", "claude", "opencode"]) {
+    const run = manager.start("p", kind);
+    assert.ok(run.agentId);
+    assert.equal(
+      store.data.agents.find((a) => a.id === run.agentId).sessionId,
+      run.id,
+    );
+  }
+  manager.start("p", "shell");
+  assert.equal(store.data.agents.length, 3);
+  const first = store.data.sessions[0];
+  exits[0]({ exitCode: 0 });
+  const restored = manager.recover(first.id);
+  assert.equal(restored.agentId, first.agentId);
+  assert.equal(store.data.agents.length, 3);
+  assert.equal(store.data.agents[0].sessionId, restored.id);
+  const legacy = {
+    projects: store.data.projects,
+    agents: [],
+    tasks: [],
+    sessions: JSON.parse(JSON.stringify(store.data.sessions)),
+  };
+  for (const s of legacy.sessions) {
+    delete s.agentId;
+    s.status = "interrupted";
+  }
+  migrateAgents(legacy);
+  assert.equal(legacy.agents.length, 3);
+  assert.equal(legacy.sessions[0].agentId, legacy.sessions.at(-1).agentId);
+  const ids = legacy.agents.map((a) => a.id);
+  migrateAgents(legacy);
+  assert.deepEqual(
+    legacy.agents.map((a) => a.id),
+    ids,
+  );
+});
+test("agent memory and task queues survive restart, snapshot context, and require explicit review", (t) => {
+  const { Agents } = require("../desktop/agents.cjs");
+  const dir = temp(t),
+    store = new Store(dir),
+    exits = [],
+    output = [];
+  store.data.projects.push({ id: "p", path: dir });
+  let launched;
+  const manager = new Terminals(
+    store,
+    () => {},
+    {
+      spawn(file, args) {
+        launched = args;
+        return {
+          onData(fn) {
+            output.push(fn);
+          },
+          onExit(fn) {
+            exits.push(fn);
+          },
+          kill() {},
+          resize() {},
+          write() {},
+        };
+      },
+    },
+    { resolveExecutable: () => "/fake/cli" },
+  );
+  t.after(() => manager.shutdown());
+  const agents = new Agents(store, manager),
+    agent = agents.create({
+      projectId: "p",
+      provider: "claude",
+      name: "Builder",
+      instructions: "Keep diffs small.",
+    });
+  agents.update(agent.id, {
+    memory: "Use PostgreSQL; currency amounts are integer cents.",
+  });
+  const first = agents.queue(agent.id, "Implement checkout."),
+    next = agents.queue(agent.id, "Add tests.");
+  const run = agents.startTask(first.id);
+  assert.ok(
+    launched.some((arg) => arg.includes("currency amounts are integer cents")),
+  );
+  assert.equal(first.context.memory, agent.memory);
+  agents.update(agent.id, { memory: "Updated notes for the next task." });
+  assert.notEqual(first.context.memory, agent.memory);
+  assert.throws(
+    () => agents.startTask(next.id),
+    /already has a running terminal/,
+  );
+  assert.throws(() => agents.resolveTask(first.id, "done"), /Stop the task/);
+  output[0]("Actual output");
+  assert.equal(run.activity.length, 1);
+  assert.equal(run.activity[0].bytes, Buffer.byteLength("Actual output"));
+  exits[0]({ exitCode: 0 });
+  assert.equal(first.status, "review");
+  assert.equal(
+    next.status,
+    "queued",
+    "Exiting a CLI never auto-spends on another task",
+  );
+  const recovery = manager.recover(run.id);
+  assert.equal(first.sessionId, recovery.id);
+  assert.equal(first.status, "running");
+  exits[1]({ exitCode: 0 });
+  agents.resolveTask(first.id, "done");
+  agents.startTask(next.id);
+  const restored = new Store(dir);
+  assert.equal(restored.data.agents[0].memory, agent.memory);
+  assert.equal(restored.data.tasks[0].status, "done");
+  assert.equal(restored.data.tasks[1].status, "interrupted");
+  assert.equal(restored.data.agents[0].stage, "review");
+});

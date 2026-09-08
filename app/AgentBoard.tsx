@@ -22,6 +22,7 @@ import {
   type Skill,
   type State,
 } from "./types";
+import AgentDetails from "./AgentDetails";
 import { providerNames } from "./TerminalDeck";
 
 function columnFor(agent: Agent, session?: Session) {
@@ -52,6 +53,7 @@ export default function AgentBoard({
   onOpen: (session: Session) => void;
   onError: (error: unknown) => void;
 }) {
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [filter, setFilter] = useState("all"),
     [queries, setQueries] = useState<Record<string, string>>({});
   const [create, setCreate] = useState(false),
@@ -93,7 +95,6 @@ export default function AgentBoard({
             <h1>Agent trenches</h1>
             <span className="board-count">{agents.length}</span>
           </div>
-          <p>Every agent has a name, a job, and a session you can return to.</p>
         </div>
         <div className="command-heading-actions">
           <select
@@ -121,7 +122,7 @@ export default function AgentBoard({
           </button>
         </div>
       </div>
-      <div className="board-summary">
+      <div className="board-summary compact-summary">
         <span>
           <i className="live-dot" />
           {
@@ -132,15 +133,16 @@ export default function AgentBoard({
           live sessions
         </span>
         <span>
-          <ShieldCheck size={12} />
-          CLI permissions stay active
+          {agents.filter((a) => a.stage === "review").length} in review
         </span>
         <span>
-          <Folder size={12} />
-          Local project folders
-        </span>
-        <span className="board-summary-note">
-          Process state is measured · CLI tokens unavailable
+          {
+            state.tasks.filter(
+              (t) =>
+                t.status === "queued" && agents.some((a) => a.id === t.agentId),
+            ).length
+          }{" "}
+          queued
         </span>
       </div>
       <div className="trenches-columns">
@@ -197,7 +199,7 @@ export default function AgentBoard({
                   />
                 </label>
               </header>
-              <div className="column-hint">{column.hint}</div>
+
               <div className="trench-list">
                 {visible.map((agent) => {
                   const session = sessions.get(agent.sessionId || ""),
@@ -207,7 +209,10 @@ export default function AgentBoard({
                       (s) => s.agentId === agent.id,
                     ).length;
                   return (
-                    <article className="trench-card" key={agent.id}>
+                    <article
+                      className={`trench-card ${running ? "is-running" : ""} provider-${agent.provider}`}
+                      key={agent.id}
+                    >
                       <div className="trench-card-main">
                         <div className={`agent-avatar ${agent.provider}`}>
                           {agent.name
@@ -222,7 +227,13 @@ export default function AgentBoard({
                         </div>
                         <div className="trench-card-text">
                           <div className="trench-name">
-                            <h3>{agent.name}</h3>
+                            <button
+                              className="agent-title-button"
+                              title={`Manage ${agent.name}`}
+                              onClick={() => setDetailId(agent.id)}
+                            >
+                              <h3>{agent.name}</h3>
+                            </button>
                             <span>{providerNames[agent.provider]}</span>
                           </div>
                           <p className="trench-project">
@@ -233,10 +244,39 @@ export default function AgentBoard({
                             className="trench-mission"
                             title={agent.lastTask || agent.instructions}
                           >
-                            {agent.lastTask || agent.instructions}
+                            {agent.lastTask || agent.instructions || ""}
                           </p>
                         </div>
                       </div>
+                      {running && (
+                        <div
+                          className="agent-output-activity"
+                          title="Terminal output in the last two minutes"
+                        >
+                          {Array.from({ length: 24 }, (_, i) => {
+                            const bucket =
+                              Math.floor(Date.now() / 5000) * 5000 -
+                              (23 - i) * 5000;
+                            const bytes =
+                              session?.activity?.find((p) => p.at === bucket)
+                                ?.bytes || 0;
+                            return (
+                              <i
+                                key={i}
+                                style={{
+                                  height: `${bytes ? Math.min(100, 20 + Math.log2(bytes + 1) * 5) : 8}%`,
+                                  opacity: bytes ? 0.9 : 0.15,
+                                }}
+                              />
+                            );
+                          })}
+                          <span>
+                            {session?.lastOutputAt
+                              ? `Output ${Math.max(0, Math.floor((Date.now() - session.lastOutputAt) / 1000))}s ago`
+                              : "Waiting for output"}
+                          </span>
+                        </div>
+                      )}
                       <div className="trench-metrics">
                         <span>
                           <Clock3 size={11} />
@@ -261,6 +301,12 @@ export default function AgentBoard({
                         </span>
                       </div>
                       <div className="trench-actions">
+                        <button
+                          title={`Manage ${agent.name}`}
+                          onClick={() => setDetailId(agent.id)}
+                        >
+                          Details
+                        </button>
                         {agent.stage === "review" && !running ? (
                           <button
                             title="Ready for another task"
@@ -325,18 +371,11 @@ export default function AgentBoard({
                       {queries[column.id]
                         ? "No matching agents"
                         : column.id === "ready"
-                          ? "Your next teammate starts here"
+                          ? "No agents ready"
                           : column.id === "running"
                             ? "No live sessions"
                             : "Nothing waiting for review"}
                     </h3>
-                    <p>
-                      {column.id === "ready"
-                        ? "Create a named agent with a provider and a set of instructions."
-                        : column.id === "running"
-                          ? "Start a task to open a real CLI session."
-                          : "Exited and interrupted agent sessions appear here. You can also flag an agent manually."}
-                    </p>
                   </div>
                 )}
               </div>
@@ -344,6 +383,16 @@ export default function AgentBoard({
           );
         })}
       </div>
+      {detailId && state.agents.find((a) => a.id === detailId) && (
+        <AgentDetails
+          key={detailId}
+          agent={state.agents.find((a) => a.id === detailId)!}
+          state={state}
+          onClose={() => setDetailId(null)}
+          onOpen={onOpen}
+          onError={onError}
+        />
+      )}
       {create && (
         <div className="modal-backdrop">
           <form

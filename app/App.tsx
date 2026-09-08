@@ -123,6 +123,7 @@ const blank: State = {
   chats: [],
   usage: [],
   agents: [],
+  tasks: [],
   settings: { provider: "openai", models: { openai: "", anthropic: "" } },
   ui: { view: "workspace", projectId: null, chatId: null, sessionId: null },
   capabilities: {
@@ -611,7 +612,6 @@ export default function App() {
                     <h1>Terminal trenches</h1>
                     <span className="board-count">{running.length} live</span>
                   </div>
-                  <p>Claude, Codex, OpenCode, and your shell. Side by side.</p>
                 </div>
                 <div className="command-heading-actions">
                   <select
@@ -639,13 +639,6 @@ export default function App() {
                     }
                   />
                 </div>
-              </div>
-              <div className="grid-session-strip">
-                <span>
-                  <span className="live-dot" />
-                  Processes stay alive when you switch views
-                </span>
-                <span>Hide a pane to detach · Stop to end its process</span>
               </div>
               <TerminalDeck
                 sizing={preferences.terminalSizing}

@@ -7,6 +7,13 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("@lezer/") && !/\/(common|highlight|lr)\//.test(id))
+            return;
+          if (
+            id.includes("@codemirror/lang-") ||
+            id.includes("@codemirror/legacy-modes")
+          )
+            return;
           if (
             id.includes("@codemirror") ||
             id.includes("@lezer") ||

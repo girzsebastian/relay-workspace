@@ -1,3 +1,4 @@
+import FileIcon from "./FileIcon";
 import { useEffect, useState } from "react";
 import {
   ChevronDown,
@@ -140,7 +141,7 @@ function Branch({
               ) : (
                 <>
                   <span className="tree-indent" />
-                  <FileCode2 size={13} />
+                  <FileIcon path={entry.path} />
                 </>
               )}
               <span>{entry.name}</span>

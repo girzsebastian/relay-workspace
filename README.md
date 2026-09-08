@@ -4,7 +4,7 @@
 
 Relay addresses a familiar problem: a terminal closes or the computer restarts, and you have to reconstruct what you were doing. It puts your projects, saved conversations, terminal history, editor tabs and drafts, and usage records in one place.
 
-**Status: desktop alpha 0.2.0.** One Electron codebase targets macOS and Windows. See [validation](docs/VALIDATION.md) for what has actually been tested. This is not yet a hosted service or a production subscription product.
+**Status: desktop alpha 0.3.0.** One Electron codebase targets macOS and Windows. See [validation](docs/VALIDATION.md) for what has actually been tested. This is not yet a hosted service or a production subscription product.
 
 ## Start locally
 
@@ -38,7 +38,9 @@ For a graphical conversation, open **Settings & providers**, choose OpenAI or An
 - Resizable and hideable explorer, editor, terminal panel, and chat; saved sizes and visibility with a reset command.
 - Nested file explorer, up to 20 persistent file tabs per project, two editor groups, shared buffers, syntax highlighting, save shortcut, and detection of conflicting disk edits.
 - Terminal grids of 2/4/6 panes; editor terminal panel of 1/2/4 panes. Resize columns/rows, focus a pane, detach it, and reconnect through the session selector.
-- Named CLI agents with instructions, an optional project skill, and a linked terminal. Ready / Live sessions / Review & recovery columns with project filters and search.
+- Every Codex, Claude Code, and OpenCode session launched through Relay appears on the agent board, including existing saved sessions after migration. Recovery keeps the same agent identity.
+- Agents have editable names and instructions, saved memory, an optional project skill, a persistent task queue, and run history. Tasks start explicitly and move to review when their CLI session exits.
+- Language-aware code coloring, including PHP, Python, YAML, CSS, HTML, JavaScript/TypeScript, JSON, SQL, shell scripts, and Dockerfiles. File-type badges and measured terminal-output activity add visual context.
 - Open the selected project in an installed Cursor or VS Code application.
 - Saved, multi-turn API chats using OpenAI Responses and Anthropic Messages.
 - Four chat profiles: Builder, Architect, Reviewer, and Product partner.
@@ -58,7 +60,11 @@ Drag a divider to resize it, or focus the divider and use arrow keys. Title-bar 
 
 Closing a dirty file tab asks before discarding its draft. Hiding a terminal pane does not stop its process; **Stop** does. Terminal dropdowns can attach any saved session without opening another process. The status bar shows measured API tokens, running/saved agents, and tracked build minutes for the current repository. CLI usage remains explicitly unavailable.
 
-Agents in the same project share that folder's files. Relay keeps one live terminal per named agent and preserves the official CLI's approval prompts. “Live session” means a process is running; it does not infer that the model is thinking or that its task is complete. Use **Review** to flag work manually. New task starts a new conversation; open the existing session to continue one.
+Agents in the same project share that folder's files. Relay keeps one live terminal per agent and preserves the official CLI's approval prompts. “Live session” means a process is running; it does not infer that the model is thinking or that its task is complete. Use **Review** to flag work manually. New task starts a new conversation; open the existing session to continue one.
+
+Open an agent’s **Details** to edit its instructions and memory, queue work, or view previous runs. Saved memory is included with new tasks; it is not inferred from terminal output. Queued tasks require **Start** and never launch automatically after a restart. A CLI session ending moves its task to review; only **Mark done** records completion. The activity graph measures recent terminal output, not model thinking or token use.
+
+Only provider sessions launched using Relay’s controls are indexed automatically. Commands typed inside a general shell and processes started in another application are not detected or imported.
 
 The agent/runtime separation is inspired by [Rakazo](https://github.com/elie222/rakazo). See the [assessment and implementation boundaries](docs/RAKAZO.md).
 
@@ -113,7 +119,7 @@ The graphical API chat has **no file, terminal, MCP, web, or agent orchestration
 Set `RELAY_DATA_DIR` to an absolute directory to use a separate local workspace profile (also used by packaged-app tests). Otherwise state is in Electron's `userData` directory, normally `~/Library/Application Support/Relay` on macOS and `%APPDATA%/Relay` on Windows:
 
 ```text
-workspace.json         projects, session metadata, chats, drafts, usage, UI state
+workspace.json         projects, agents, tasks, memory, sessions, chats, drafts, usage, UI state
 workspace.backup.json  previous saved state
 credentials.json       OS-encrypted API keys
 logs/<uuid>.log        bounded terminal output
@@ -140,7 +146,7 @@ npm run dist:win         # Windows NSIS installer, run on Windows
 
 The desktop test opens visible windows, uses temporary data, runs harmless shell commands, then force-stops and relaunches its own isolated test instance. It does not submit real AI requests or read your existing CLI conversations.
 
-The GitHub Actions workflow checks macOS and Windows and uploads unsigned application directories. It has not run until this repository is pushed. Windows native-module builds may require Visual Studio C++ tools if a compatible prebuilt node-pty binary is unavailable. macOS source builds require Xcode command-line tools.
+The GitHub Actions workflow checks macOS and Windows and uploads unsigned application directories. Check the workflow result for the exact commit being used. Windows native-module builds may require Visual Studio C++ tools if a compatible prebuilt node-pty binary is unavailable. macOS source builds require Xcode command-line tools.
 
 Public releases need Apple signing/notarization and Windows signing. Packaging configuration alone is not proof of Windows runtime compatibility. See [validation](docs/VALIDATION.md).
 

@@ -2,6 +2,7 @@ const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs");
 const crypto = require("node:crypto");
+const { registerSession, recordTaskExit } = require("./agent-state.cjs");
 
 function environment() {
   const env = { ...process.env, TERM: "xterm-256color" };
@@ -114,10 +115,11 @@ function launchSpec(kind, options = {}, platform = process.platform) {
   throw new Error("Unsupported terminal type.");
 }
 class Terminals {
-  constructor(store, publish, pty) {
+  constructor(store, publish, pty, options = {}) {
     this.store = store;
     this.publish = publish;
     this.pty = pty;
+    this.resolveExecutable = options.resolveExecutable || executable;
     this.running = new Map();
     this.heartbeat = setInterval(() => {
       if (this.running.size) {
@@ -141,7 +143,7 @@ class Terminals {
       options.providerSessionId = crypto.randomUUID();
     const spec = launchSpec(kind, options);
     if (["codex", "claude", "opencode"].includes(kind)) {
-      const found = executable(spec.file);
+      const found = this.resolveExecutable(spec.file);
       if (!found)
         throw new Error(
           `Install ${spec.file} and sign in using its official CLI first, then reopen Relay.`,
@@ -166,8 +168,15 @@ class Terminals {
       heartbeatAt: Date.now(),
       ...options,
     };
+    const task = this.store.data.tasks?.find((t) => t.id === record.taskId);
+    if (task) {
+      task.sessionId = record.id;
+      task.status = "running";
+    }
     this.store.data.sessions.push(record);
-    const owner = this.store.data.agents?.find((a) => a.id === record.agentId);
+    const owner =
+      registerSession(this.store.data, record) ||
+      this.store.data.agents?.find((a) => a.id === record.agentId);
     if (owner) {
       owner.sessionId = record.id;
       owner.stage = "ready";
@@ -185,6 +194,14 @@ class Terminals {
       this.running.set(record.id, child);
       child.onData((data) => {
         record.lastOutputAt = Date.now();
+        const bucket = Math.floor(record.lastOutputAt / 5000) * 5000;
+        record.activity ??= [];
+        if (record.activity.at(-1)?.at !== bucket)
+          record.activity.push({ at: bucket, bytes: 0 });
+        record.activity.at(-1).bytes += Buffer.byteLength(data);
+        record.activity = record.activity
+          .filter((p) => p.at >= bucket - 115000)
+          .slice(-24);
         record.sequence = (record.sequence || 0) + 1;
         try {
           this.store.appendLog(record.id, data);
@@ -209,6 +226,7 @@ class Terminals {
           (a) => a.id === record.agentId && a.sessionId === record.id,
         );
         if (agent) agent.stage = "review";
+        recordTaskExit(this.store.data, record);
         this.store.save();
         this.publish("changed");
       });
@@ -216,6 +234,7 @@ class Terminals {
       if (owner) owner.stage = "review";
       record.status = "failed";
       record.endedAt = Date.now();
+      recordTaskExit(this.store.data, record);
       this.store.save();
       throw error;
     }
@@ -234,7 +253,12 @@ class Terminals {
       throw new Error(
         "This agent has another running session. Stop it before recovering earlier work.",
       );
+    const task = this.store.data.tasks?.find(
+      (t) =>
+        t.id === old.taskId && ["review", "interrupted"].includes(t.status),
+    );
     return this.start(old.projectId, old.kind, {
+      ...(task ? { taskId: task.id } : {}),
       command: old.command,
       providerSessionId: old.providerSessionId,
       recover: ["codex", "claude", "opencode"].includes(old.kind),
@@ -266,6 +290,7 @@ class Terminals {
       const s = this.store.session(id);
       s.status = "interrupted";
       s.endedAt = Date.now();
+      recordTaskExit(this.store.data, s);
       p.kill();
     }
     this.store.save();

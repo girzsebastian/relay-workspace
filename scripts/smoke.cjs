@@ -17,6 +17,18 @@ fs.writeFileSync(
   path.join(project, "README.md"),
   "# Launchpad\n\nA sample project for Relay desktop verification.\n",
 );
+const languageFixtures = {
+  "sample.php":
+    '<?php\n// A small service\nclass Checkout {\n  public const LIMIT = 100;\n  public function title(): string { return "Checkout"; }\n}\n',
+  "sample.py": "# A small function\ndef total(price):\n    return price * 2\n",
+  "sample.yaml":
+    '# Build pipeline\npipelines:\n  default:\n    - step: "Run tests"\n',
+  "sample.css": "/* Theme */\n.card { color: #ffcc88; padding: 12px; }\n",
+  Dockerfile: "# Container\nFROM node:22\nWORKDIR /app\nRUN npm ci\n",
+  "sample.mjs": '// Module\nexport const label = "Relay";\n',
+};
+for (const [name, content] of Object.entries(languageFixtures))
+  fs.writeFileSync(path.join(project, name), content);
 fs.mkdirSync(path.join(project, ".agents/skills/review"), { recursive: true });
 fs.writeFileSync(
   path.join(project, ".agents/skills/review/SKILL.md"),
@@ -55,6 +67,7 @@ async function until(fn, timeout = 12000) {
 }
 (async () => {
   try {
+    console.log("Desktop check: launch and editor");
     await launch();
     await page
       .getByRole("button", { name: "Open project", exact: true })
@@ -62,6 +75,40 @@ async function until(fn, timeout = 12000) {
       .click();
     await page.getByRole("button", { name: "app.ts", exact: true }).click();
     await page.locator(".cm-content").waitFor();
+    // Verify real parser spans and contrasting colors for previously unhighlighted files.
+    for (const [filename, language] of [
+      ["sample.php", "PHP"],
+      ["sample.py", "Python"],
+      ["sample.yaml", "YAML"],
+      ["sample.css", "CSS"],
+      ["Dockerfile", "Dockerfile"],
+      ["sample.mjs", "JavaScript"],
+    ]) {
+      await page.getByRole("button", { name: filename, exact: true }).click();
+      await page.locator(`.code-editor[data-language="${language}"]`).waitFor();
+      await until(
+        async () =>
+          (await page.locator('.cm-content [class*="tok-"]').count()) > 1,
+      );
+      const colors = await page
+        .locator('.cm-content [class*="tok-"]')
+        .evaluateAll((nodes) => [
+          ...new Set(nodes.map((n) => getComputedStyle(n).color)),
+        ]);
+      assert.ok(
+        colors.length >= 2,
+        `${filename} should have distinct syntax colors`,
+      );
+      if (filename === "sample.php") {
+        await page.locator(".tok-keyword").first().waitFor();
+        await page.screenshot({
+          path: path.join(root, "artifacts/syntax-php.png"),
+        });
+      }
+      await page
+        .getByRole("button", { name: `Close ${filename}`, exact: true })
+        .click();
+    }
     const initial = await api("state");
     const projectId = initial.projects[0].id;
     assert.equal((await api("skills:list", { projectId })).length, 1);
@@ -117,6 +164,7 @@ async function until(fn, timeout = 12000) {
         ),
       ),
     );
+    console.log("Desktop check: terminal I/O passed");
     // Closing a window leaves the same PTY alive.
     await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].close(),
@@ -134,6 +182,7 @@ async function until(fn, timeout = 12000) {
     await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].show(),
     );
+    console.log("Desktop check: background continuity passed");
     const build = await api("terminal:start", {
       projectId,
       kind: "build",
@@ -159,6 +208,7 @@ async function until(fn, timeout = 12000) {
       skillPath: ".agents/skills/review/SKILL.md",
     });
     assert.equal(chat.skillPath, ".agents/skills/review/SKILL.md");
+    console.log("Desktop check: build and chat records passed");
     // IDE tabs preserve distinct drafts; both editor groups can show the same buffer.
     await page.getByRole("button", { name: "README.md", exact: true }).click();
     assert.equal(
@@ -274,6 +324,7 @@ async function until(fn, timeout = 12000) {
     };
     await checkViewport();
     await page.screenshot({ path: path.join(root, "artifacts/workspace.png") });
+    console.log("Desktop check: layouts passed");
     const shells = [shell];
     for (let i = 1; i < 4; i++)
       shells.push(await api("terminal:start", { projectId, kind: "shell" }));
@@ -371,6 +422,31 @@ async function until(fn, timeout = 12000) {
     await page
       .getByRole("heading", { name: "Frontend builder", exact: true })
       .waitFor();
+    await page
+      .getByTitle("Manage Frontend builder", { exact: true })
+      .first()
+      .click();
+    await page
+      .getByRole("textbox", { name: "Queued task", exact: true })
+      .fill("Review the checkout UI.");
+    await page
+      .getByRole("button", { name: "Add to queue", exact: true })
+      .click();
+    await page.getByText("Review the checkout UI.", { exact: true }).waitFor();
+    await page.getByRole("tab", { name: "Memory", exact: true }).click();
+    await page
+      .getByRole("textbox", { name: "Memory", exact: true })
+      .fill("Prefer accessible controls and integer currency amounts.");
+    await page.getByRole("button", { name: "Save agent", exact: true }).click();
+    await until(async () =>
+      (await api("state")).agents[0].memory.includes("accessible controls"),
+    );
+    await page.screenshot({
+      path: path.join(root, "artifacts/agent-memory.png"),
+    });
+    await page
+      .getByRole("button", { name: "Close agent details", exact: true })
+      .click();
     // Additional local fixture identities; no model requests or subscription usage.
     for (const [name, provider, instructions] of [
       [
@@ -428,6 +504,7 @@ async function until(fn, timeout = 12000) {
     await page.locator(".editor-group").first().waitFor();
     await until(async () => (await api("state")).ui.view === "workspace");
     const savedUi = (await api("state")).ui;
+    console.log("Desktop check: agent records passed; restarting test process");
     const child = desktop.process();
     const exited = once(child, "exit");
     child.kill("SIGKILL");
@@ -466,6 +543,9 @@ async function until(fn, timeout = 12000) {
     assert.equal(recovered.projects[0].editor.secondary, "README.md");
     assert.equal(recovered.projects[0].expandedPaths.length, 3);
     assert.equal(recovered.agents.length, 4);
+    assert.equal(recovered.tasks.length, 1);
+    assert.equal(recovered.tasks[0].status, "queued");
+    assert.match(recovered.agents[0].memory, /accessible controls/);
     assert.match(
       (await api("terminal:log", { id: shell.id })).data,
       /RELAY_PTY_OK/,

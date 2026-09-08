@@ -163,6 +163,48 @@ function register() {
     },
   );
   ipc(
+    "agent:update",
+    z.object({
+      id,
+      changes: z.object({
+        name: z.string().trim().min(1).max(60),
+        instructions: z.string().max(20000),
+        memory: z.string().max(20000),
+        skillPath: z.string().max(4096).nullable().optional(),
+      }),
+    }),
+    (a) => {
+      const result = agents.update(a.id, a.changes);
+      publish("changed");
+      return result;
+    },
+  );
+  ipc(
+    "agent:queue",
+    z.object({ id, task: z.string().trim().min(1).max(20000) }),
+    (a) => {
+      const result = agents.queue(a.id, a.task);
+      publish("changed");
+      return result;
+    },
+  );
+  ipc("task:start", z.object({ id }), (a) => {
+    try {
+      return agents.startTask(a.id);
+    } finally {
+      publish("changed");
+    }
+  });
+  ipc(
+    "task:resolve",
+    z.object({ id, status: z.enum(["done", "cancelled"]) }),
+    (a) => {
+      const result = agents.resolveTask(a.id, a.status);
+      publish("changed");
+      return result;
+    },
+  );
+  ipc(
     "agent:create",
     z.object({
       projectId: id,

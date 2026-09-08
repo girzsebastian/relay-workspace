@@ -45,8 +45,31 @@ export type Session = {
   recoveredFrom?: string;
   agentId?: string;
   lastOutputAt?: number;
+  activity?: { at: number; bytes: number }[];
+};
+export type AgentTask = {
+  id: string;
+  agentId: string;
+  text: string;
+  status:
+    | "queued"
+    | "starting"
+    | "running"
+    | "review"
+    | "done"
+    | "failed"
+    | "interrupted"
+    | "cancelled";
+  createdAt: number;
+  startedAt?: number;
+  endedAt?: number;
+  sessionId: string | null;
+  exitCode?: number;
+  error?: string;
 };
 export type Agent = {
+  memory?: string;
+  origin?: "terminal" | "named";
   id: string;
   name: string;
   projectId: string;
@@ -135,6 +158,7 @@ export type State = {
   chats: Chat[];
   usage: Usage[];
   agents: Agent[];
+  tasks: AgentTask[];
   settings: { provider: Provider; models: Record<Provider, string> };
   ui: Partial<Preferences> & {
     view: View;

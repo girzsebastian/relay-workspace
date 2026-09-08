@@ -1364,3 +1364,329 @@ body,
 .app-shell .command-title h1 {
   color: var(--text);
 }
+/* Activity and language accents are functional, with restrained motion. */
+.app-shell .command-heading {
+  min-height: 44px;
+  padding: 8px 14px;
+}
+.app-shell .command-title h1 {
+  font-size: 14px;
+}
+.file-language-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 19px !important;
+  width: 19px;
+  font:
+    600 10px/1 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  letter-spacing: -0.6px;
+}
+.file-entry svg {
+  color: #b7a57f;
+}
+.active-group .editor-tabbar {
+  box-shadow: inset 0 -1px #91b6e321;
+}
+.app-shell .file-tab.selected {
+  background: #90baff0a;
+}
+.ide-titlebar .view-switcher button.selected {
+  box-shadow: inset 0 -1px #91baff;
+  color: #b5d1f8;
+}
+[data-theme="light"] .ide-titlebar .view-switcher button.selected {
+  color: #356295;
+}
+.trench-card {
+  position: relative;
+  animation: card-arrive 0.18s ease-out;
+  border-left: 2px solid transparent;
+}
+.trench-card.provider-claude {
+  --provider: #d9a38d;
+}
+.trench-card.provider-codex {
+  --provider: #a3d7b9;
+}
+.trench-card.provider-opencode {
+  --provider: #b7a5e5;
+}
+.trench-card.is-running {
+  border-left-color: var(--provider);
+}
+.trench-card.is-running .agent-avatar {
+  box-shadow: 0 0 13px color-mix(in srgb, var(--provider) 12%, transparent);
+}
+.agent-title-button {
+  padding: 0;
+  text-align: left;
+}
+.agent-title-button:hover {
+  color: var(--accent);
+}
+.compact-summary {
+  height: 27px;
+  padding: 4px 14px;
+}
+.agent-output-activity {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+  margin: 10px 0;
+  color: var(--provider);
+}
+.agent-output-activity i {
+  display: block;
+  flex: 0 1 5px;
+  min-height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+  transition: height 0.3s ease;
+}
+.agent-output-activity span {
+  margin-left: auto;
+  align-self: center;
+  font-size: 9px;
+  color: var(--muted);
+}
+.agent-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  padding: 40px 0 24px 44px;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  background: #0005;
+}
+.agent-detail {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 40px #0004;
+  animation: detail-enter 0.18s ease-out;
+}
+.agent-detail > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.agent-detail > header h2 {
+  font-size: 16px;
+  font-weight: 550;
+}
+.agent-detail > header span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.agent-detail > header > button {
+  margin-left: auto;
+}
+.detail-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.detail-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  border-bottom: 2px solid transparent;
+}
+.detail-tabs button[aria-selected="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.detail-tabs button span {
+  font-size: 9px;
+  background: var(--raised);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+.task-composer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.task-composer textarea,
+.agent-field textarea,
+.agent-field input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 12px;
+  resize: vertical;
+}
+.task-composer .button {
+  height: 29px;
+  font-size: 11px;
+}
+.task-item {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 11px;
+  background: var(--bg);
+  margin-bottom: 8px;
+}
+.task-item > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.task-status {
+  font-size: 9px;
+  color: var(--muted);
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  text-transform: capitalize;
+}
+.task-status.queued {
+  color: var(--accent);
+}
+.task-status.running,
+.task-status.done {
+  color: var(--green);
+}
+.task-status.review,
+.task-status.failed,
+.task-status.interrupted {
+  color: #d9b686;
+}
+.task-item time {
+  font-size: 10px;
+  color: var(--muted);
+}
+.task-item > p {
+  margin: 10px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.task-item footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.task-item footer button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--accent);
+  padding: 4px;
+}
+.agent-field {
+  margin-bottom: 18px;
+}
+.agent-field label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 550;
+}
+.agent-field p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.detail-save {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+.detail-save > span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.detail-empty {
+  text-align: center;
+  padding: 35px;
+  color: var(--muted);
+}
+.detail-empty p {
+  font-size: 12px;
+  margin-top: 12px;
+}
+.run-history > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.run-history > button > div {
+  flex: 1;
+  min-width: 0;
+}
+.run-history strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.run-history div > span,
+.run-history small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 4px;
+}
+@keyframes card-arrive {
+  from {
+    opacity: 0.5;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes detail-enter {
+  from {
+    opacity: 0.6;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trench-card,
+  .agent-detail {
+    animation: none;
+  }
+  .agent-output-activity i {
+    transition: none;
+  }
+}
