@@ -1,0 +1,53 @@
+# Validation — desktop alpha 0.2.0
+
+Validation date: September 8, 2026. Host: Apple Silicon macOS (Darwin 25.4.0). Electron: 44.2.0. Core tests also verified with Node 22.22.0. Initial npm build commands used the machine's default Node 20.19.6, which produces engine warnings; Node 22.12+ is the supported development baseline.
+
+## Passed
+
+| Check                               | Evidence                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript and production renderer  | `npm run build` succeeds. Vite reports an editor bundle-size advisory; it does not block the build.                                                                                                                                                                                                      |
+| Core automated tests                | 15/15 pass with Node's test runner, including a run on Node 22.22.0.                                                                                                                                                                                                                                     |
+| Native desktop integration on macOS | `npm run test:desktop` passes using a temporary fixture project and data directory.                                                                                                                                                                                                                      |
+| Real terminal I/O                   | Four independent PTY shells produce output, can be assigned to grid panes, focused and detached without stopping their processes.                                                                                                                                                                        |
+| Window-close continuity             | Closing the window hides it while the same terminal remains running.                                                                                                                                                                                                                                     |
+| Build tracking                      | An explicitly launched command completes with exit code 0 and a timed run record.                                                                                                                                                                                                                        |
+| File editor                         | Keyboard saving, two file tabs, two editor groups, independent active files, and shared-buffer edits verified.                                                                                                                                                                                           |
+| Desktop layout                      | Explorer/chat/terminal/split dividers resize with keyboard and pointer; hide/show toggles work; native menu routing works; workbench has no whole-page overflow.                                                                                                                                         |
+| Draft navigation regression         | An unsaved draft remains visible after navigating away and returning.                                                                                                                                                                                                                                    |
+| Crash recovery                      | The test forcibly kills its own Electron instance, relaunches with the same data, and confirms saved project, both file tabs/drafts, expanded tree, pane sizes, visibility, grid assignments, agent records, chat record, interrupted terminal status, and output. Recovery starts a distinct shell run. |
+| Agent board                         | Named agent creation through the UI, project-skill identities, review placement, and state persistence verified without calling models.                                                                                                                                                                  |
+| Project skill discovery             | A real temporary SKILL.md is discovered and attached to a conversation record.                                                                                                                                                                                                                           |
+| Renderer health                     | No unhandled renderer errors in the desktop integration run.                                                                                                                                                                                                                                             |
+| Mac packaging                       | electron-builder produces `release/mac-arm64/Relay.app`.                                                                                                                                                                                                                                                 |
+| Packaged Mac startup                | `npm run test:package` confirms packaged mode, renderer/preload/IPC startup, and native-module loading.                                                                                                                                                                                                  |
+| Windows packaging                   | Cross-built x64 NSIS installer: `release/Relay Setup 0.2.0.exe`. Packaging success is not Windows runtime verification.                                                                                                                                                                                  |
+| Dependency audit                    | npm audit reported zero known vulnerabilities after updating Electron to 44.2.0. This is a point-in-time audit, not a security guarantee.                                                                                                                                                                |
+
+The core tests cover corrupt-state preservation, interrupted runtime excluding downtime, bounded output, path traversal, symlink escape rejection on macOS, conflicting file edits, executable mode preservation, provider endpoint and history contracts, cache accounting, missing usage, error-key redaction, and literal Windows command launcher construction. Additional tests cover draft-to-tab migration, provider task arguments, exact OpenCode recovery, named-agent ownership/skills/duplicate-run prevention, and literal external-editor launch paths.
+
+## Artifacts
+
+- `release/mac-arm64/Relay.app` — Apple Silicon Mac application.
+- `release/Relay-0.2.0-mac-arm64.zip` — compressed Mac application bundle.
+- `release/Relay Setup 0.2.0.exe` — Windows x64 installer, cross-built on macOS.
+- `artifacts/workspace.png`, `artifacts/terminal-grid.png`, `artifacts/agent-board.png`, `artifacts/usage.png` — desktop screenshots using temporary **test fixture data**, not user work or fabricated usage.
+
+Mac builds have no Developer ID signing or notarization. Windows builds have no trusted publisher signature. The cross-built Windows app skips executable resource editing and uses node-pty's included Windows prebuilds; test on a real Windows machine before distributing it. Native Windows CI builds should be preferred for release candidates.
+
+## Not yet verified
+
+- Windows installation, UI, PTY behavior, CLI launch, OS key encryption, or restart recovery on real Windows hardware/VM.
+- Intel Mac runtime or packaging.
+- Live OpenAI/Anthropic model requests, billing accuracy against provider invoices, API cancellation, or OS credential storage round trips. No real AI requests or billing were triggered by the tests. API request/response contracts were tested with synthetic responses.
+- End-to-end authenticated Codex, Claude Code, or OpenCode conversations launched from Relay. The installed CLI help was inspected and command construction is tested, but tests do not consume subscription tokens.
+- A physical computer reboot. The test exercises an abrupt app-process death and rehydration, which covers the application's startup recovery logic without restarting the user's computer.
+- Long-running, high-output terminals, disk-full failure handling, multi-gigabyte histories, network-mounted repositories, or adversarial concurrent filesystem mutation.
+- Full accessibility audit, internationalization, screen reader behavior, automatic updates, trusted signing, or notarization.
+- GitHub Actions status is recorded separately on GitHub after publication; local packaging alone does not establish a Windows runtime pass.
+
+## Product limits
+
+This is a usable local alpha, not the full commercial product brief. There is no account service, subscription checkout, sync, cloud execution, VS Code extension host, unattended agent orchestration, or CLI subscription token collector. API chat is text-only and cannot inspect project files or execute tools. Codex exact recovery needs a linked session ID; otherwise its official picker is used.
+
+The next acceptance gate is a real Windows run plus live provider testing with a deliberately chosen account/model and usage budget, followed by signed installers and backup/retention controls.
