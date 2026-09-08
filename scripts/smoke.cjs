@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
+const { stripVTControlCharacters } = require("node:util");
 const root = path.resolve(__dirname, "..");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-desktop-"));
 const project = path.join(dir, "launchpad");
@@ -111,7 +112,9 @@ async function until(fn, timeout = 12000) {
     await api("terminal:write", { id: shell.id, data: echo });
     await until(async () =>
       /\r?\nRELAY_PTY_OK\r?\n/.test(
-        (await api("terminal:log", { id: shell.id })).data,
+        stripVTControlCharacters(
+          (await api("terminal:log", { id: shell.id })).data,
+        ),
       ),
     );
     // Closing a window leaves the same PTY alive.
@@ -401,7 +404,7 @@ async function until(fn, timeout = 12000) {
     await page.getByText("Build history", { exact: true }).waitFor();
     await page.screenshot({ path: path.join(root, "artifacts/usage.png") });
     const menu = await desktop.evaluate(({ Menu }) =>
-      Menu.getApplicationMenu().items.map((i) => i.label),
+      Menu.getApplicationMenu().items.map((i) => i.label.replaceAll("&", "")),
     );
     for (const label of [
       "File",
