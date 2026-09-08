@@ -4,7 +4,7 @@
 
 Relay addresses a familiar problem: a terminal closes or the computer restarts, and you have to reconstruct what you were doing. It puts your projects, saved conversations, terminal history, editor tabs and drafts, and usage records in one place.
 
-**Status: desktop alpha 0.3.0.** One Electron codebase targets macOS and Windows. See [validation](docs/VALIDATION.md) for what has actually been tested. This is not yet a hosted service or a production subscription product.
+**Status: desktop alpha 0.3.1.** One Electron codebase targets macOS and Windows. See [validation](docs/VALIDATION.md) for what has actually been tested. This is not yet a hosted service or a production subscription product.
 
 ## Start locally
 

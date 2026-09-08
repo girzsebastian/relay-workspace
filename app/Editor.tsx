@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { Compartment } from "@codemirror/state";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -159,7 +159,9 @@ export default function Editor({
       effects: skin.current.reconfigure(theme(dark)),
     });
   }, [dark]);
-  useEffect(() => {
+  // Apply shared-buffer changes during commit. A passive effect can replay an
+  // older prop after another keystroke has already changed the editor document.
+  useLayoutEffect(() => {
     const editor = instance.current;
     if (editor && editor.state.doc.toString() !== content) {
       syncing.current = true;

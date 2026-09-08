@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
+const { execFileSync } = require("node:child_process");
 const { stripVTControlCharacters } = require("node:util");
 const root = path.resolve(__dirname, "..");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-desktop-"));
@@ -497,8 +498,8 @@ async function until(fn, timeout = 12000) {
     // Invoke native menu callbacks to verify actual command routing.
     await desktop.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()
-        .items.find((i) => i.label === "View")
-        .submenu.items.find((i) => i.label === "Editor")
+        .items.find((i) => i.label.replaceAll("&", "") === "View")
+        .submenu.items.find((i) => i.label.replaceAll("&", "") === "Editor")
         .click(),
     );
     await page.locator(".editor-group").first().waitFor();
@@ -507,7 +508,13 @@ async function until(fn, timeout = 12000) {
     console.log("Desktop check: agent records passed; restarting test process");
     const child = desktop.process();
     const exited = once(child, "exit");
-    child.kill("SIGKILL");
+    if (process.platform === "win32") {
+      // Kill only this isolated test instance and its child PTYs. Killing the
+      // Electron parent alone leaves ConPTY children holding fixture files.
+      execFileSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+      });
+    } else child.kill("SIGKILL");
     await exited;
     desktop = null;
     await launch();
@@ -561,6 +568,7 @@ async function until(fn, timeout = 12000) {
       "Screenshots: artifacts/workspace.png, artifacts/terminal-grid.png, artifacts/agent-board.png, artifacts/usage.png",
     );
   } catch (error) {
+    console.error("Desktop check failed:", error);
     if (page && !page.isClosed()) {
       console.error(
         "UI alerts:",
@@ -574,7 +582,12 @@ async function until(fn, timeout = 12000) {
     throw error;
   } finally {
     if (desktop) await desktop.close();
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 15,
+      retryDelay: 200,
+    });
   }
 })().catch((e) => {
   console.error(e);

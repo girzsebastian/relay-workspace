@@ -1,4 +1,4 @@
-# Validation — desktop alpha 0.3.0
+# Validation — desktop alpha 0.3.1
 
 Validation date: September 8, 2026. Host: Apple Silicon macOS (Darwin 25.4.0). Electron: 44.2.0. Core tests also verified with Node 22.22.0. Initial npm build commands used the machine's default Node 20.19.6, which produces engine warnings; Node 22.12+ is the supported development baseline.
 
@@ -21,7 +21,7 @@ Validation date: September 8, 2026. Host: Apple Silicon macOS (Darwin 25.4.0). E
 | Renderer health                     | No unhandled renderer errors in the desktop integration run.                                                                                                                                                                                                                                                                               |
 | Mac packaging                       | electron-builder produces `release/mac-arm64/Relay.app`.                                                                                                                                                                                                                                                                                   |
 | Packaged Mac startup                | `npm run test:package` confirms packaged mode, renderer/preload/IPC startup, native-module loading, and loading the packaged PHP parser chunk.                                                                                                                                                                                             |
-| Windows packaging                   | Cross-built x64 NSIS installer: `release/Relay.Setup.0.3.0.exe`. Packaging success is not Windows runtime verification.                                                                                                                                                                                                                    |
+| Windows packaging                   | Cross-built x64 NSIS installer: `release/Relay.Setup.0.3.1.exe`. Packaging success is not Windows runtime verification.                                                                                                                                                                                                                    |
 | Dependency audit                    | npm audit reported zero known vulnerabilities after updating Electron to 44.2.0. This is a point-in-time audit, not a security guarantee.                                                                                                                                                                                                  |
 
 The core tests cover corrupt-state preservation, interrupted runtime excluding downtime, bounded output, path traversal, symlink escape rejection on macOS, conflicting file edits, executable mode preservation, provider endpoint and history contracts, cache accounting, missing usage, error-key redaction, and literal Windows command launcher construction. Additional tests cover draft-to-tab migration, provider task arguments, exact OpenCode recovery, named-agent ownership/skills/duplicate-run prevention, and literal external-editor launch paths.
@@ -29,8 +29,8 @@ The core tests cover corrupt-state preservation, interrupted runtime excluding d
 ## Artifacts
 
 - `release/mac-arm64/Relay.app` — Apple Silicon Mac application.
-- `release/Relay-0.3.0-mac-arm64.zip` — compressed Mac application bundle.
-- `release/Relay.Setup.0.3.0.exe` — Windows x64 installer, cross-built on macOS.
+- `release/Relay-0.3.1-mac-arm64.zip` — compressed Mac application bundle.
+- `release/Relay.Setup.0.3.1.exe` — Windows x64 installer, cross-built on macOS.
 - `artifacts/syntax-php.png`, `artifacts/agent-memory.png`, `artifacts/workspace.png`, `artifacts/terminal-grid.png`, `artifacts/agent-board.png`, `artifacts/usage.png` — desktop screenshots using temporary **test fixture data**, not user work or fabricated usage.
 
 Mac builds have no Developer ID signing or notarization. Windows builds have no trusted publisher signature. The cross-built Windows app skips executable resource editing and uses node-pty's included Windows prebuilds; test on a real Windows machine before distributing it. Native Windows CI builds should be preferred for release candidates.
