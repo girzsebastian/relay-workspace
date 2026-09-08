@@ -212,12 +212,12 @@ async function until(fn, timeout = 12000) {
     console.log("Desktop check: build and chat records passed");
     // IDE tabs preserve distinct drafts; both editor groups can show the same buffer.
     await page.getByRole("button", { name: "README.md", exact: true }).click();
-    assert.equal(
-      await page
-        .getByRole("tablist", { name: "Files in editor 1" })
-        .getByRole("tab")
-        .count(),
-      2,
+    await until(
+      async () =>
+        (await page
+          .getByRole("tablist", { name: "Files in editor 1" })
+          .getByRole("tab")
+          .count()) === 2,
     );
     await page
       .getByRole("button", { name: "Split editor", exact: true })
@@ -303,7 +303,7 @@ async function until(fn, timeout = 12000) {
       ["Toggle terminal panel", ".editor-terminals"],
     ]) {
       await page.getByRole("button", { name: button, exact: true }).click();
-      assert.equal(await page.locator(selector).count(), 0);
+      await until(async () => (await page.locator(selector).count()) === 0);
       await page.getByRole("button", { name: button, exact: true }).click();
       await page.locator(selector).waitFor();
     }
@@ -364,7 +364,9 @@ async function until(fn, timeout = 12000) {
           `PANE_${i + 1}_OK`,
         ),
       );
-    assert.equal(await page.locator(".terminal-canvas").count(), 4);
+    await until(
+      async () => (await page.locator(".terminal-canvas").count()) === 4,
+    );
     for (const label of [
       "Resize terminal columns column",
       "Resize terminal rows",
@@ -376,11 +378,15 @@ async function until(fn, timeout = 12000) {
       .getByRole("button", { name: "Focus pane", exact: true })
       .first()
       .click();
-    assert.equal(await page.locator(".terminal-tile:visible").count(), 1);
+    await until(
+      async () => (await page.locator(".terminal-tile:visible").count()) === 1,
+    );
     await page
       .getByRole("button", { name: "Restore grid", exact: true })
       .click();
-    assert.equal(await page.locator(".terminal-tile:visible").count(), 4);
+    await until(
+      async () => (await page.locator(".terminal-tile:visible").count()) === 4,
+    );
     await page
       .getByRole("button", {
         name: "Hide pane (keep process running)",
@@ -402,7 +408,9 @@ async function until(fn, timeout = 12000) {
     await page
       .getByRole("button", { name: "6 terminal panes", exact: true })
       .click();
-    assert.equal(await page.locator(".terminal-tile:visible").count(), 6);
+    await until(
+      async () => (await page.locator(".terminal-tile:visible").count()) === 6,
+    );
     await checkViewport();
     await page
       .getByRole("button", { name: "4 terminal panes", exact: true })
