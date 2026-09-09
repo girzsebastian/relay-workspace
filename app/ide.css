@@ -3450,3 +3450,154 @@ body,
   background-repeat: repeat-x;
   background-position: bottom left;
 }
+
+/* What changed since the last commit, drawn over the code the way VS Code
+   does: a wash behind added lines, a mark where something was removed, a bar
+   in the gutter, and a strip down the right edge for the whole file. The
+   colours are translucent so they sit correctly on both themes. */
+.cm-line-added {
+  background: rgba(76, 175, 106, 0.14);
+}
+/* A line that only adds a comment is a lighter kind of change. */
+.cm-line-added.cm-line-comment {
+  background: rgba(76, 175, 106, 0.26);
+}
+.cm-line-deleted {
+  box-shadow: inset 0 2px 0 -1px rgba(224, 88, 88, 0.85);
+  background: rgba(224, 88, 88, 0.09);
+}
+.cm-gutters .cm-gutter-added,
+.cm-gutters .cm-gutter-deleted {
+  position: relative;
+}
+.cm-gutters .cm-gutter-added::before,
+.cm-gutters .cm-gutter-deleted::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+}
+.cm-gutters .cm-gutter-added::before {
+  background: #4caf6a;
+}
+.cm-gutters .cm-gutter-deleted::before {
+  background: #e05858;
+}
+.cm-gutters .cm-gutter-added,
+.cm-gutters .cm-gutter-deleted {
+  color: #7fc490;
+}
+.cm-gutters .cm-gutter-deleted {
+  color: #e08a8a;
+}
+.cm-change-ruler {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  pointer-events: none;
+  z-index: 3;
+}
+.cm-ruler-tick {
+  position: absolute;
+  right: 2px;
+  width: 6px;
+  height: 3px;
+  border-radius: 1px;
+  opacity: 0.85;
+}
+.cm-ruler-tick.t-added {
+  background: #4caf6a;
+}
+.cm-ruler-tick.t-deleted {
+  background: #e05858;
+}
+.cm-ruler-tick.t-error {
+  background: #ea6962;
+  width: 8px;
+  height: 4px;
+  right: 1px;
+}
+.cm-ruler-tick.t-warning {
+  background: #d8a657;
+  width: 8px;
+}
+/* Keep the ruler clear of the scrollbar's own track. */
+.cm-editor .cm-scroller {
+  padding-right: 10px;
+}
+/* The fold chevron: down when the block is open, right when it is closed.
+   Sized and centred so the line number beside it stays on its own line. */
+.cm-fold-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 100%;
+  color: var(--muted, #8a96a5);
+  opacity: 0.55;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+.cm-fold-arrow.open {
+  transform: rotate(90deg);
+}
+.cm-fold-arrow:hover {
+  opacity: 1;
+}
+.cm-foldGutter {
+  min-width: 14px;
+}
+.cm-foldPlaceholder {
+  background: rgba(125, 145, 170, 0.18);
+  border: none;
+  border-radius: 4px;
+  color: inherit;
+  padding: 0 6px;
+  margin: 0 3px;
+}
+
+/* Everything the agent changed in this conversation, kept above the messages
+   so it is reachable without scrolling back through the transcript. */
+.chat-changes {
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+  max-height: 40%;
+  overflow: auto;
+}
+.chat-changes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  font-size: 11.5px;
+  color: var(--text);
+  text-align: left;
+}
+.chat-changes-toggle:hover {
+  background: var(--raised);
+}
+.chat-changes-toggle b {
+  font-weight: 550;
+}
+.chat-changes-counts {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.chat-changes-list {
+  padding-bottom: 6px;
+}
+.chat-changes-repo,
+.chat-changes-repeat {
+  font-size: 10px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}

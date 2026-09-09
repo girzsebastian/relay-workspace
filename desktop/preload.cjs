@@ -37,6 +37,7 @@ const allowed = new Set([
   "git:discard",
   "git:repos",
   "git:agent-changes",
+  "git:file-changes",
   "git:hunks",
   "git:revert-hunk",
   "git:menu",

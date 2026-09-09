@@ -348,6 +348,57 @@ async function fileHunks(cwd, file) {
   };
 }
 
+// Which lines of the file as it stands now were added, and where lines were
+// removed. The editor needs this in its own coordinates, so it is derived from
+// the hunk headers rather than from the diff text.
+async function lineChanges(cwd, file) {
+  const { hunks } = parseDiff(await fileDiff(cwd, file));
+  const added = [];
+  const removed = [];
+  for (const hunk of hunks) {
+    let line = hunk.newStart;
+    let pending = 0;
+    // A deletion has no line of its own, so it is recorded against whichever
+    // line closed over it: the replacement that follows it, or the next line
+    // of context.
+    const flush = () => {
+      if (!pending) return;
+      removed.push({ line, count: pending });
+      pending = 0;
+    };
+    for (const row of hunk.lines) {
+      if (row.startsWith("+")) {
+        flush();
+        added.push(line);
+        line += 1;
+      } else if (row.startsWith("-")) {
+        pending += 1;
+      } else if (!row.startsWith("\\")) {
+        flush();
+        line += 1;
+      }
+    }
+    flush();
+  }
+  return { added, removed };
+}
+
+// The editor knows a path relative to the workspace; which repository it
+// belongs to is whichever discovered repository holds it, deepest first so a
+// nested checkout wins over its parent.
+async function fileLineChanges(workspace, relative) {
+  const target = path.resolve(workspace, relative);
+  const repositories = discoverRepositories(workspace).sort(
+    (a, b) => b.relative.length - a.relative.length,
+  );
+  for (const repository of repositories) {
+    const root = repository.path;
+    if (target === root || target.startsWith(root + path.sep))
+      return lineChanges(root, path.relative(root, target));
+  }
+  return { added: [], removed: [] };
+}
+
 // Undo for a single hunk: git applies the reverse of exactly that range, so the
 // rest of the file — including other edits — is left alone.
 async function revertHunk(cwd, file, index) {
@@ -427,6 +478,8 @@ async function stash(cwd, { pop = false } = {}) {
 }
 
 module.exports = {
+  lineChanges,
+  fileLineChanges,
   fileHunks,
   revertHunk,
   menu,

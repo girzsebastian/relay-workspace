@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { EditorView, basicSetup } from "codemirror";
+import { EditorView } from "@codemirror/view";
+import { setup } from "./setup";
 import { intelligence } from "./intelligence";
+import { changeTracking } from "./changes";
 import { Compartment } from "@codemirror/state";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -55,7 +57,11 @@ function theme(dark: boolean) {
         background: dark ? "#181b21" : "#fff",
         border: "none",
         color: dark ? "#657185" : "#8a96a5",
-        padding: "12px 8px 0 8px",
+        // No vertical padding here. CodeMirror already offsets the gutter by
+        // the content's own padding; adding more slides every line number off
+        // its line, and the fold gutter then resolves a click to the line
+        // above, which is why nothing folded.
+        padding: "0 8px",
       },
       ".cm-activeLine, .cm-activeLineGutter": {
         background: dark ? "#232a36" : "#f0f5fc",
@@ -127,10 +133,13 @@ export default function Editor({
         parent: host.current!,
         doc: initial.current,
         extensions: [
-          basicSetup,
+          setup,
           // Completions, errors and types from the project's own
           // TypeScript service.
           ...intelligence(projectId, path),
+          // Green for what was added, red where something was removed, with a
+          // bar in the gutter and a strip down the right edge.
+          ...changeTracking(projectId, path),
           highlight,
           skin.current.of(theme(dark)),
           language.of([]),

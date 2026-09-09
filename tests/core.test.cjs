@@ -2030,3 +2030,51 @@ test("the language service answers about the buffer, not the file on disk", (t) 
     [],
   );
 });
+
+test("changed lines are reported in the file's own coordinates", async (t) => {
+  const dir = temp(t);
+  const { execFile } = require("node:child_process");
+  const { promisify } = require("node:util");
+  const run = promisify(execFile);
+  const repo = path.join(dir, "frontend");
+  fs.mkdirSync(repo);
+  await run("git", ["init", "-b", "main"], { cwd: repo });
+  await run("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+  await run("git", ["config", "user.name", "Relay Test"], { cwd: repo });
+  const before = ["one", "two", "three", "four", "five", "six", "seven"];
+  fs.writeFileSync(path.join(repo, "app.ts"), before.join("\n") + "\n");
+  await run("git", ["add", "."], { cwd: repo });
+  await run("git", ["commit", "-m", "first"], { cwd: repo });
+
+  // Line 2 replaced, a comment added after line 6, and line 7 deleted.
+  const after = [
+    "one",
+    "TWO",
+    "three",
+    "four",
+    "five",
+    "six",
+    "// a note",
+    "eight",
+  ];
+  fs.writeFileSync(path.join(repo, "app.ts"), after.join("\n") + "\n");
+
+  const changes = await gitModule.lineChanges(repo, "app.ts");
+  assert.deepEqual(changes.added, [2, 7, 8]);
+  // A deletion is marked on the line that closed over it: line 2, where "TWO"
+  // replaced "two", and line 7, where the comment took the place of "seven".
+  assert.deepEqual(changes.removed, [
+    { line: 2, count: 1 },
+    { line: 7, count: 1 },
+  ]);
+
+  // The editor knows a workspace-relative path; the repository is found for it.
+  const found = await gitModule.fileLineChanges(dir, "frontend/app.ts");
+  assert.deepEqual(found, changes);
+  // A file outside any repository is not an error, just nothing to draw.
+  fs.writeFileSync(path.join(dir, "loose.txt"), "x\n");
+  assert.deepEqual(await gitModule.fileLineChanges(dir, "loose.txt"), {
+    added: [],
+    removed: [],
+  });
+});

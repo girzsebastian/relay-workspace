@@ -510,6 +510,40 @@ async function until(fn, timeout = 12000) {
         (t) => t.path === "sample.py",
       ),
     );
+    // The channel has to be on the preload allowlist or the editor draws
+    // nothing, which no amount of unit testing would catch.
+    const lineChanges = await api("git:file-changes", {
+      projectId: (await api("state")).projects[0].id,
+      path: "sample.py",
+    });
+    assert.ok(
+      lineChanges.added.length > 0,
+      "git:file-changes reported no changed lines for a modified file",
+    );
+    // And those lines have to reach the document as decorations.
+    await until(async () => (await page.locator(".cm-line-added").count()) > 0);
+    const bars = await page.locator(".cm-gutters .cm-gutter-added").count();
+    assert.ok(bars > 0, "no change bar in the line-number gutter");
+    const ruler = await page.locator(".cm-change-ruler .cm-ruler-tick").count();
+    assert.ok(ruler > 0, "the overview ruler down the right edge is empty");
+    // A block that can be folded shows a chevron that turns as it closes, and
+    // clicking it actually hides the block.
+    // The gutter keeps a hidden spacer marker for sizing; only click a real one.
+    const arrow = page.locator(".cm-fold-arrow.open:visible").first();
+    if (await arrow.count()) {
+      const before = await page.locator(".cm-foldPlaceholder").count();
+      await arrow.click();
+      await until(
+        async () =>
+          (await page.locator(".cm-foldPlaceholder").count()) > before,
+      );
+      // And clicking the closed chevron brings it back.
+      await page.locator(".cm-fold-arrow.closed:visible").first().click();
+      await until(
+        async () =>
+          (await page.locator(".cm-foldPlaceholder").count()) === before,
+      );
+    }
     // Leave the editor as the later restart check expects to find it.
     await page
       .getByRole("button", { name: "Close sample.py", exact: true })

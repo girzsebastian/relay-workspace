@@ -873,6 +873,13 @@ function register() {
       return task;
     },
   );
+  // Which lines of an open file differ from the last commit, so the editor
+  // can colour them the way VS Code does.
+  ipc(
+    "git:file-changes",
+    z.object({ projectId: id, path: z.string().min(1).max(4096) }),
+    (a) => git.fileLineChanges(store.project(a.projectId).path, a.path),
+  );
   ipc("git:hunks", target.extend({ file: z.string().min(1).max(4096) }), (a) =>
     git.fileHunks(repo(a.projectId, a.repo), a.file),
   );

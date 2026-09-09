@@ -73,6 +73,7 @@ import ChatSteps from "./ChatSteps";
 import Markdown from "./Markdown";
 import ApprovalCard from "./ApprovalCard";
 import ChatMessage from "./ChatMessage";
+import ChatChanges from "./ChatChanges";
 import RecoveryPanel from "./RecoveryPanel";
 import Editor from "./Editor";
 import TerminalDeck, { LayoutButtons } from "./TerminalDeck";
@@ -1056,6 +1057,13 @@ export default function App() {
                             </select>
                           )}
                         </div>
+                        {selectedChat && (
+                          <ChatChanges
+                            projectId={projectId || ""}
+                            messages={selectedChat.messages}
+                            onError={showError}
+                          />
+                        )}
                         <div
                           className="chat-messages"
                           ref={chatScroll}

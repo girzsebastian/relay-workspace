@@ -189,6 +189,22 @@ the conditions that would change the answer are in `docs/VSCODE-FORK.md`.
 - **Session picker.** Each row names the agent, workspace, state and a line
   taken from what that session printed, with the whole description on hover.
 
+## What changed since (0.5.1)
+
+- **You can see what the agent changed, in the file.** Opening a file the agent
+  touched paints the added lines green, marks where lines were removed in red,
+  puts a bar beside the line number, and draws a strip down the right edge with
+  every change and every error in the whole file, including the parts scrolled
+  out of sight. A line that only adds a comment gets its own, stronger green.
+- **A list of every file the agent changed**, above the chat rather than buried
+  in one reply. It counts the files and the lines, names the repository when a
+  workspace holds more than one, and opens the side-by-side diff on click.
+- **Folding works.** The gutter carried a 12px padding that CodeMirror already
+  applies itself, so every line number sat half a line off its code and the
+  fold gutter resolved a click to the line above it: nothing ever folded. The
+  padding is gone, and the marker is now a chevron that points down when the
+  block is open and right when it is closed.
+
 ## Still open, in the order worth doing
 
 1. **Per-agent `git worktree` isolation.** `desktop/workspaces.cjs` exists but
@@ -204,6 +220,6 @@ the conditions that would change the answer are in `docs/VSCODE-FORK.md`.
 
 ## Verification
 
-Every change above is covered by `npm test` (54 tests), `tsc --noEmit`,
+Every change above is covered by `npm test` (57 tests), `tsc --noEmit`,
 `npm run build`, and `npm run test:desktop`, which drives the real application
 and fails if any panel raises an error toast.
