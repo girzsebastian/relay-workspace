@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
+import { intelligence } from "./intelligence";
 import { Compartment } from "@codemirror/state";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -104,11 +105,13 @@ export default function Editor({
   content,
   onChange,
   dark = true,
+  projectId = null,
 }: {
   path: string;
   content: string;
   onChange: (value: string) => void;
   dark?: boolean;
+  projectId?: string | null;
 }) {
   const host = useRef<HTMLDivElement>(null),
     instance = useRef<EditorView | null>(null),
@@ -125,6 +128,9 @@ export default function Editor({
         doc: initial.current,
         extensions: [
           basicSetup,
+          // Completions, errors and types from the project's own
+          // TypeScript service.
+          ...intelligence(projectId, path),
           highlight,
           skin.current.of(theme(dark)),
           language.of([]),

@@ -3410,3 +3410,43 @@ body,
   font-size: 11px;
   color: var(--muted);
 }
+/* The signature and documentation shown beside a completion or on hover. */
+.cm-info-box {
+  max-width: 460px;
+  padding: 7px 9px;
+}
+.cm-info-box code {
+  display: block;
+  font-family: var(--mono, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+.cm-info-box p {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.cm-tooltip {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--accent);
+  color: var(--bg);
+}
+.cm-diagnostic-error {
+  border-left-color: #ea6962;
+}
+.cm-diagnostic-warning {
+  border-left-color: #d8a657;
+}
+.cm-lintRange-error {
+  background-repeat: repeat-x;
+  background-position: bottom left;
+}

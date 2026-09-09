@@ -35,6 +35,7 @@ const {
 } = require("./cli-stream.cjs");
 const { AgentBridge } = require("./agent-bridge.cjs");
 const { Approvals } = require("./approvals.cjs");
+const { LanguageServices } = require("./language.cjs");
 const {
   interruptedReport,
   summarise,
@@ -65,6 +66,7 @@ let win,
   terminals,
   bridge,
   approvals,
+  language,
   quitting = false;
 const requests = new Map();
 const id = z.string().uuid();
@@ -944,6 +946,57 @@ function register() {
     publish("changed");
     return { reverted, skipped };
   });
+  // Completions, errors and types come from the project's own TypeScript
+  // service, reading the buffer the editor is showing rather than the file
+  // on disk, so an unsaved edit is answered about.
+  const languageArgs = z.object({
+    projectId: id,
+    path: z.string().min(1).max(4096),
+    text: z.string().max(4 * 1024 * 1024),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .max(8 * 1024 * 1024)
+      .optional(),
+  });
+  const languageFile = (projectId, relative) =>
+    files.resolveFile(store.project(projectId).path, relative);
+  ipc("lang:completions", languageArgs, (a) =>
+    language.completions(
+      store.project(a.projectId).path,
+      languageFile(a.projectId, a.path),
+      a.offset || 0,
+      a.text,
+    ),
+  );
+  ipc("lang:diagnostics", languageArgs, (a) =>
+    language.diagnostics(
+      store.project(a.projectId).path,
+      languageFile(a.projectId, a.path),
+      a.text,
+    ),
+  );
+  ipc("lang:hover", languageArgs, (a) =>
+    language.hover(
+      store.project(a.projectId).path,
+      languageFile(a.projectId, a.path),
+      a.offset || 0,
+      a.text,
+    ),
+  );
+  ipc(
+    "lang:detail",
+    languageArgs.extend({ name: z.string().min(1).max(200) }),
+    (a) =>
+      language.detail(
+        store.project(a.projectId).path,
+        languageFile(a.projectId, a.path),
+        a.offset || 0,
+        a.text,
+        a.name,
+      ),
+  );
   ipc("chat:modes", z.object({}), () => ({
     modes: modeList(),
     runModes: runModeList(),
@@ -1099,6 +1152,7 @@ else {
       agents = new Agents(store, terminals);
       pruneUnrecoverable(store, { sessionExists: providerSessionExists });
       approvals = new Approvals(store, publish);
+      language = new LanguageServices();
       bridge = new AgentBridge(store, terminals, publish, approvals);
       electronSession.defaultSession.setPermissionRequestHandler(
         (_wc, _permission, callback) => callback(false),

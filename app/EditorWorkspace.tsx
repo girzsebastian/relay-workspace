@@ -277,6 +277,7 @@ export default function EditorWorkspace({
             <Editor
               path={draft.path}
               content={draft.content}
+              projectId={project.id}
               dark={preferences.theme === "dark"}
               onChange={(content) => {
                 void persist({

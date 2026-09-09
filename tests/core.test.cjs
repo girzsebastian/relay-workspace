@@ -1972,3 +1972,61 @@ test("undoing a reply restores what it changed and leaves the rest alone", async
   // A file the reply created still exists: git cannot restore an untracked file.
   assert.ok(fs.existsSync(path.join(dir, "created.txt")));
 });
+
+test("the language service answers about the buffer, not the file on disk", (t) => {
+  const { LanguageServices, isSupported } = require("../desktop/language.cjs");
+  const dir = temp(t);
+  const file = path.join(dir, "sample.ts");
+  fs.writeFileSync(file, "const clients: string[] = [];\n");
+  const services = new LanguageServices();
+  t.after(() => services.forget(dir));
+
+  // An unsaved edit is what the person is looking at, so it is what is checked.
+  const edited = "const clients: string[] = [];\nconst broken = nsew;\n";
+  const problems = services.diagnostics(dir, file, edited);
+  assert.equal(problems.length, 1);
+  assert.equal(problems[0].code, 2304);
+  assert.match(problems[0].message, /Cannot find name 'nsew'/);
+  // The span points at the offending word, not the whole line.
+  assert.equal(edited.slice(problems[0].from, problems[0].to), "nsew");
+
+  // The file on disk is still clean; nothing was written to check it.
+  assert.equal(
+    fs.readFileSync(file, "utf8"),
+    "const clients: string[] = [];\n",
+  );
+
+  const typing = "const clients: string[] = [];\ncli\n";
+  const offered = services.completions(
+    dir,
+    file,
+    typing.lastIndexOf("cli") + 3,
+    typing,
+  );
+  assert.ok(
+    offered.items.some((item) => item.label === "clients"),
+    "a name declared above is offered",
+  );
+  const detail = services.detail(
+    dir,
+    file,
+    typing.lastIndexOf("cli") + 3,
+    typing,
+    "clients",
+  );
+  assert.match(detail.signature, /const clients: string\[\]/);
+
+  const hovered = services.hover(dir, file, edited.indexOf("clients"), edited);
+  assert.match(hovered.signature, /const clients: string\[\]/);
+
+  // A language it does not understand is left alone rather than guessed at.
+  assert.equal(isSupported("notes.md"), false);
+  assert.deepEqual(
+    services.diagnostics(dir, path.join(dir, "notes.md"), "x"),
+    [],
+  );
+  assert.deepEqual(
+    services.completions(dir, path.join(dir, "notes.md"), 0, "x").items,
+    [],
+  );
+});
