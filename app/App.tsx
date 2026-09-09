@@ -306,6 +306,10 @@ export default function App() {
     path: string;
     token: number;
   } | null>(null);
+  // Clicking a file the agent changed opens it in the editor beside the chat,
+  // the same as clicking one in source control.
+  const openInEditor = (path: string) =>
+    setOpenRequest({ path, token: Date.now() });
   const pendingApprovals = (state.approvals || []).filter(
     (a) => a.status === "pending" && (!chatId || a.chatId === chatId),
   );
@@ -1061,6 +1065,7 @@ export default function App() {
                           <ChatChanges
                             projectId={projectId || ""}
                             messages={selectedChat.messages}
+                            onOpenFile={openInEditor}
                             onError={showError}
                           />
                         )}
@@ -1121,6 +1126,7 @@ export default function App() {
                                       selectedChat.messages.length - 1
                                     ]
                                 }
+                                onOpenFile={openInEditor}
                                 onError={showError}
                               />
                             ))

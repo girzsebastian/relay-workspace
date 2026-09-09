@@ -2078,3 +2078,52 @@ test("changed lines are reported in the file's own coordinates", async (t) => {
     removed: [],
   });
 });
+
+test("a file the agent just created counts and diffs as wholly added", async (t) => {
+  const dir = temp(t);
+  const { execFile } = require("node:child_process");
+  const { promisify } = require("node:util");
+  const run = promisify(execFile);
+  await run("git", ["init", "-b", "main"], { cwd: dir });
+  await run("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+  await run("git", ["config", "user.name", "Relay Test"], { cwd: dir });
+  fs.writeFileSync(path.join(dir, "kept.txt"), "one\n");
+  await run("git", ["add", "."], { cwd: dir });
+  await run("git", ["commit", "-m", "first"], { cwd: dir });
+  fs.writeFileSync(path.join(dir, ".env"), "test=test\nsecond=2\n");
+
+  // git diff knows nothing about an untracked file, so the counts come from
+  // the file itself rather than reading as "+0 -0".
+  const status = await gitModule.status(dir);
+  const created = status.files.find((f) => f.path === ".env");
+  assert.equal(created.untracked, true);
+  assert.equal(created.added, 2);
+  assert.equal(created.removed, 0);
+
+  // `diff --no-index` exits non-zero when the files differ; its output is the
+  // diff and must not be swallowed as an error.
+  const diff = await gitModule.fileDiff(dir, ".env");
+  assert.match(diff, /\+test=test/);
+  assert.match(diff, /\+second=2/);
+  const { hunks } = await gitModule.fileHunks(dir, ".env");
+  assert.equal(hunks.length, 1);
+
+  // And the editor paints every line of it green.
+  assert.deepEqual(await gitModule.lineChanges(dir, ".env"), {
+    added: [1, 2],
+    removed: [],
+  });
+
+  // A file with no trailing newline still counts its last line; a binary one
+  // reports no count rather than a wrong one.
+  fs.writeFileSync(path.join(dir, "tail.txt"), "a\nb");
+  assert.deepEqual(gitModule.untrackedCounts(dir, "tail.txt"), {
+    added: 2,
+    removed: 0,
+  });
+  fs.writeFileSync(path.join(dir, "blob.bin"), Buffer.from([1, 0, 2, 0]));
+  assert.deepEqual(gitModule.untrackedCounts(dir, "blob.bin"), {
+    added: null,
+    removed: 0,
+  });
+});

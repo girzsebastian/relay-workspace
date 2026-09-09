@@ -1,5 +1,6 @@
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { promisify } = require("node:util");
 
@@ -8,11 +9,18 @@ const run = promisify(execFile);
 // Every call passes arguments as an array and never a shell string: branch and
 // file names come from the repository, not from Relay, and must not be parsed
 // by a shell.
-async function git(cwd, args, { maxBuffer = 8 * 1024 * 1024 } = {}) {
+async function git(
+  cwd,
+  args,
+  { maxBuffer = 8 * 1024 * 1024, output = false } = {},
+) {
   try {
     const { stdout } = await run("git", args, { cwd, maxBuffer });
     return stdout;
   } catch (error) {
+    // `diff --no-index` reports "they differ" as exit code 1 and still prints
+    // the diff, so a caller that wants the output must be able to keep it.
+    if (output && error.stdout) return error.stdout;
     const message = String(error.stderr || error.message || "")
       .trim()
       .slice(0, 400);
@@ -132,12 +140,16 @@ async function status(cwd) {
     upstream: parsed.upstream,
     ahead: parsed.ahead,
     behind: parsed.behind,
-    files: parsed.files.map((file) => ({
-      ...file,
-      ...(counts.get(file.path) || {}),
-      untracked: file.worktree === "?",
-      staged: file.index !== "." && file.index !== "?",
-    })),
+    files: parsed.files.map((file) => {
+      const untracked = file.worktree === "?";
+      return {
+        ...file,
+        ...(counts.get(file.path) ||
+          (untracked ? untrackedCounts(cwd, file.path) : {})),
+        untracked,
+        staged: file.index !== "." && file.index !== "?",
+      };
+    }),
   };
 }
 
@@ -145,11 +157,33 @@ async function fileDiff(cwd, file) {
   const tracked = await git(cwd, ["ls-files", "--error-unmatch", "--", file])
     .then(() => true)
     .catch(() => false);
+  // A file the agent just created is untracked, so `git diff` knows nothing
+  // about it. Comparing it against nothing shows the whole file as added,
+  // which is what it is.
   if (!tracked)
-    return git(cwd, ["diff", "--no-index", "--", "/dev/null", file]).catch(
-      (error) => String(error.message),
-    );
+    return git(cwd, ["diff", "--no-index", "--", os.devNull, file], {
+      output: true,
+    }).catch(() => "");
   return git(cwd, ["diff", "HEAD", "--", file]);
+}
+
+// How many lines an untracked file adds. Counted here rather than asked of git
+// once per file, because a fresh checkout can hold hundreds of them.
+function untrackedCounts(cwd, file) {
+  try {
+    const buffer = fs.readFileSync(path.join(cwd, file));
+    // The same test git uses to call a file binary: a NUL byte near the start.
+    if (buffer.subarray(0, 8000).includes(0))
+      return { added: null, removed: 0 };
+    if (!buffer.length) return { added: 0, removed: 0 };
+    let lines = 0;
+    for (const byte of buffer) if (byte === 10) lines += 1;
+    // A last line with no newline of its own still counts.
+    if (buffer[buffer.length - 1] !== 10) lines += 1;
+    return { added: lines, removed: 0 };
+  } catch {
+    return {};
+  }
 }
 
 async function commit(cwd, message, paths) {
@@ -478,6 +512,7 @@ async function stash(cwd, { pop = false } = {}) {
 }
 
 module.exports = {
+  untrackedCounts,
   lineChanges,
   fileLineChanges,
   fileHunks,

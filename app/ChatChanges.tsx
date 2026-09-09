@@ -44,10 +44,12 @@ export function gather(messages: Chat["messages"]): Entry[] {
 export default function ChatChanges({
   projectId,
   messages,
+  onOpenFile,
   onError,
 }: {
   projectId: string;
   messages: Chat["messages"];
+  onOpenFile?: (path: string) => void;
   onError: (error: unknown) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -80,9 +82,13 @@ export default function ChatChanges({
             <li key={`${entry.repo}/${entry.file.path}`}>
               <button
                 className="scm-file"
-                title={`See what changed in ${entry.file.path}`}
+                title={`Open ${entry.file.path}`}
                 onClick={() =>
-                  setDiff({ file: entry.file.path, repo: entry.repo })
+                  onOpenFile?.(
+                    entry.repo
+                      ? `${entry.repo}/${entry.file.path}`
+                      : entry.file.path,
+                  )
                 }
               >
                 <FileIcon path={entry.file.path} />
@@ -99,6 +105,16 @@ export default function ChatChanges({
                 <span className={`scm-letter s-${statusLetter(entry.file)}`}>
                   {statusLetter(entry.file)}
                 </span>
+              </button>
+              <button
+                className="scm-compare"
+                title={`Compare ${entry.file.path} with the last commit`}
+                aria-label={`Compare ${entry.file.path}`}
+                onClick={() =>
+                  setDiff({ file: entry.file.path, repo: entry.repo })
+                }
+              >
+                <FileDiff size={13} />
               </button>
             </li>
           ))}

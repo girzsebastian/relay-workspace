@@ -13,6 +13,7 @@ export default function ChatMessage({
   projectId,
   roleName,
   running,
+  onOpenFile,
   onError,
 }: {
   message: Message;
@@ -20,6 +21,7 @@ export default function ChatMessage({
   projectId: string;
   roleName?: string;
   running: boolean;
+  onOpenFile?: (path: string) => void;
   onError: (error: unknown) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -65,6 +67,7 @@ export default function ChatMessage({
           messageId={message.id}
           repos={message.changed || []}
           reverted={message.reverted}
+          onOpenFile={onOpenFile}
           onError={onError}
         />
       )}

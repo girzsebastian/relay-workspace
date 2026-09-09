@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronRight, Undo2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileDiff,
+  Undo2,
+} from "lucide-react";
 import FileIcon from "./FileIcon";
 import DiffView from "./DiffView";
 import { countLabel, statusLetter } from "./SourceControl";
@@ -35,6 +41,7 @@ export default function MessageChanges({
   messageId,
   repos,
   reverted,
+  onOpenFile,
   onError,
 }: {
   projectId: string;
@@ -42,6 +49,7 @@ export default function MessageChanges({
   messageId: string;
   repos: ReplyChanges[];
   reverted?: { at: number; files: number };
+  onOpenFile?: (path: string) => void;
   onError: (error: unknown) => void;
 }) {
   const [open, setOpen] = useState(false),
@@ -123,9 +131,13 @@ export default function MessageChanges({
                 <li key={`${repo.relative}/${file.path}`}>
                   <button
                     className="scm-file"
-                    title={`Review ${file.path}`}
+                    title={`Open ${file.path}`}
                     onClick={() =>
-                      setDiff({ file: file.path, repo: repo.relative })
+                      onOpenFile?.(
+                        repo.relative
+                          ? `${repo.relative}/${file.path}`
+                          : file.path,
+                      )
                     }
                   >
                     <FileIcon path={file.path} />
@@ -136,6 +148,16 @@ export default function MessageChanges({
                     <span className={`scm-letter s-${statusLetter(file)}`}>
                       {statusLetter(file)}
                     </span>
+                  </button>
+                  <button
+                    className="scm-compare"
+                    title={`Compare ${file.path} with the last commit`}
+                    aria-label={`Compare ${file.path}`}
+                    onClick={() =>
+                      setDiff({ file: file.path, repo: repo.relative })
+                    }
+                  >
+                    <FileDiff size={13} />
                   </button>
                 </li>
               ))}
