@@ -1185,13 +1185,18 @@ export default function App() {
                               value={composer}
                               onChange={(e) => setComposer(e.target.value)}
                               onKeyDown={(e) => {
+                                if (e.key !== "Enter") return;
+                                // Enter sends, Shift+Enter starts a new line.
+                                // While an input method is composing a
+                                // character, Enter belongs to that composition.
                                 if (
-                                  e.key === "Enter" &&
-                                  (e.metaKey || e.ctrlKey)
-                                ) {
-                                  e.preventDefault();
-                                  void send();
-                                }
+                                  e.shiftKey ||
+                                  e.altKey ||
+                                  e.nativeEvent.isComposing
+                                )
+                                  return;
+                                e.preventDefault();
+                                void send();
                               }}
                             />
                             <div className="composer-actions">
@@ -1334,7 +1339,7 @@ export default function App() {
                                 </button>
                               ) : (
                                 <button
-                                  title="Send message"
+                                  title="Send message (Enter)"
                                   disabled={!composer.trim() || chatBusy}
                                   onClick={send}
                                 >
@@ -1344,7 +1349,8 @@ export default function App() {
                             </div>
                           </div>
                           <p className="composer-note">
-                            Saved locally · ⌘ / Ctrl + Enter to send
+                            Saved locally · Enter to send, Shift + Enter for a
+                            new line
                           </p>
                         </div>
                       </section>

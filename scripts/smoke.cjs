@@ -495,6 +495,26 @@ async function until(fn, timeout = 12000) {
     await page
       .getByLabel("Chat mode", { exact: true })
       .selectOption("reviewer");
+    // Enter is taken by the composer and Shift+Enter breaks the line. The
+    // composer holds only blank text here, so the send it triggers stops
+    // before starting a real CLI run.
+    const composer = page.getByLabel("Message your agent", { exact: true });
+    await composer.fill("first");
+    await composer.press("Shift+Enter");
+    await composer.pressSequentially("second");
+    assert.equal(
+      await composer.inputValue(),
+      "first\nsecond",
+      "Shift+Enter should start a new line",
+    );
+    await composer.fill("  ");
+    await composer.press("Enter");
+    assert.equal(
+      await composer.inputValue(),
+      "  ",
+      "Enter should send rather than add a line",
+    );
+    await composer.fill("");
     // A changed file opens in the editor rather than only in a dialog.
     await page
       .getByRole("tab", { name: "Source control", exact: true })
