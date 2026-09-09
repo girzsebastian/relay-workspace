@@ -253,6 +253,7 @@ body,
   grid-row: 2;
 }
 .workbench > .chat-pane {
+  position: relative;
   grid-column: 3;
   grid-row: 1/-1;
 }
@@ -3304,4 +3305,37 @@ body,
 .session-list button.session-dismiss:disabled {
   opacity: 0;
   cursor: default;
+}
+/* Returning to the end of a conversation, with what is waiting there. */
+.chat-jump {
+  position: absolute;
+  right: 16px;
+  bottom: 132px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.chat-jump:hover {
+  border-color: var(--accent);
+}
+.chat-jump-badge {
+  min-width: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--text);
+}
+.chat-jump-badge.attention {
+  background: var(--accent);
+  color: var(--bg);
 }

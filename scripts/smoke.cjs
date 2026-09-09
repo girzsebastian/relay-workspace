@@ -520,6 +520,30 @@ async function until(fn, timeout = 12000) {
         (t) => t.path !== "sample.py",
       ),
     );
+    // Switching away from the editor with a conversation open must not
+    // raise anything: the chat panel unmounts while a reply may be pending.
+    const probeChat = await api("chat:create", {
+      projectId: (await api("state")).projects[0].id,
+      provider: "claude-cli",
+      model: "",
+      role: "builder",
+      mode: "plan",
+    });
+    await api("ui:update", { chatId: probeChat.id });
+    for (const target of [
+      "Board view",
+      "Grid view",
+      "Editor view",
+      "Board view",
+    ]) {
+      await page.getByRole("button", { name: target, exact: true }).click();
+      await until(async () => (await api("state")).ui.view !== undefined);
+      const toast = await page.locator(".toast").count();
+      assert.equal(toast, 0, `switching to ${target} raised an error`);
+    }
+    await page
+      .getByRole("button", { name: "Editor view", exact: true })
+      .click();
     console.log("Desktop check: panels passed");
     const shells = [shell];
     for (let i = 1; i < 4; i++)

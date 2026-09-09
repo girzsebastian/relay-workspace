@@ -224,6 +224,7 @@ export type Usage = {
   cacheRead?: number;
   cacheWrite?: number;
   measured: boolean;
+  source?: "provider-api" | "provider-cli";
   durationMs: number;
 };
 export type State = {

@@ -57,6 +57,7 @@ import {
   type Preferences,
   defaultPreferences,
   type ChatMode,
+  type Usage,
 } from "./types";
 import {
   apiProviderLabels,
@@ -296,6 +297,9 @@ export default function App() {
     }
   }, [projectId, showError]);
   const project = state.projects.find((p) => p.id === projectId);
+  const chatScroll = useRef<HTMLDivElement>(null);
+  const [atChatBottom, setAtChatBottom] = useState(true);
+  const [unseenReplies, setUnseenReplies] = useState(0);
   const [openRequest, setOpenRequest] = useState<{
     path: string;
     token: number;
@@ -311,6 +315,34 @@ export default function App() {
   const selectedSession =
     projectSessions.find((s) => s.id === sessionId) || projectSessions.at(-1);
   const selectedChat = projectChats.find((c) => c.id === chatId);
+  const chatSignal = [
+    selectedChat?.id,
+    selectedChat?.messages.length,
+    selectedChat?.messages.at(-1)?.content?.length,
+    selectedChat?.status,
+    selectedChat?.error,
+    pendingApprovals.length,
+  ].join("|");
+  useEffect(() => {
+    const box = chatScroll.current;
+    if (!box) return;
+    if (atChatBottom) {
+      box.scrollTop = box.scrollHeight;
+      setUnseenReplies(0);
+    } else setUnseenReplies((n) => n + 1);
+    // atChatBottom is read, not followed: reacting to it would scroll on a
+    // plain scroll gesture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatSignal]);
+  // Opening a conversation should land on its last message, not its first.
+  useEffect(() => {
+    const box = chatScroll.current;
+    if (!box) return;
+    box.scrollTop = box.scrollHeight;
+    setAtChatBottom(true);
+    setUnseenReplies(0);
+  }, [selectedChat?.id, view]);
+
   const running = state.sessions.filter((s) => s.status === "running");
   const interrupted = state.sessions.filter(
     (s) =>
@@ -318,16 +350,13 @@ export default function App() {
       !state.sessions.some((n) => n.recoveredFrom === s.id),
   );
   const measured = state.usage.filter((u) => u.measured);
-  const totalTokens = measured.reduce(
-    (sum, u) =>
-      sum +
-      (u.input || 0) +
-      (u.output || 0) +
-      (u.provider === "anthropic"
-        ? (u.cacheRead || 0) + (u.cacheWrite || 0)
-        : 0),
-    0,
-  );
+  const tokensOf = (u: Usage) =>
+    (u.input || 0) +
+    (u.output || 0) +
+    (u.provider === "anthropic" || u.provider === "claude-cli"
+      ? (u.cacheRead || 0) + (u.cacheWrite || 0)
+      : 0);
+  const totalTokens = measured.reduce((sum, u) => sum + tokensOf(u), 0);
   const addProject = async () => {
     try {
       const p = await call<Project | null>("project:add");
@@ -466,18 +495,15 @@ export default function App() {
         new CustomEvent("relay-command", { detail: command }),
       );
   };
-  const projectTokens = measured
-    .filter((u) => u.projectId === projectId)
-    .reduce(
-      (n, u) =>
-        n +
-        (u.input || 0) +
-        (u.output || 0) +
-        (u.provider === "anthropic"
-          ? (u.cacheRead || 0) + (u.cacheWrite || 0)
-          : 0),
-      0,
-    );
+  const projectUsage = measured.filter((u) => u.projectId === projectId);
+  const projectTokens = projectUsage
+    .filter((u) => u.source !== "provider-cli")
+    .reduce((n, u) => n + tokensOf(u), 0);
+  // CLI runs report their own token counts, so the bar no longer says they
+  // cannot be known.
+  const projectCliTokens = projectUsage
+    .filter((u) => u.source === "provider-cli")
+    .reduce((n, u) => n + tokensOf(u), 0);
   return (
     <div
       className="app-shell"
@@ -1029,7 +1055,20 @@ export default function App() {
                             </select>
                           )}
                         </div>
-                        <div className="chat-messages">
+                        <div
+                          className="chat-messages"
+                          ref={chatScroll}
+                          onScroll={(e) => {
+                            const box = e.currentTarget;
+                            const bottom =
+                              box.scrollHeight -
+                                box.scrollTop -
+                                box.clientHeight <
+                              40;
+                            setAtChatBottom(bottom);
+                            if (bottom) setUnseenReplies(0);
+                          }}
+                        >
                           {!selectedChat?.messages.length ? (
                             <div className="chat-welcome">
                               <h3>New conversation</h3>
@@ -1117,6 +1156,38 @@ export default function App() {
                             </div>
                           )}
                         </div>
+                        {(!atChatBottom || unseenReplies > 0) && (
+                          <button
+                            className="chat-jump"
+                            title={
+                              pendingApprovals.length
+                                ? "An action is waiting for your approval"
+                                : selectedChat?.error
+                                  ? "The last reply ended with an error"
+                                  : "Jump to the latest message"
+                            }
+                            onClick={() => {
+                              const box = chatScroll.current;
+                              if (!box) return;
+                              box.scrollTop = box.scrollHeight;
+                              setAtChatBottom(true);
+                              setUnseenReplies(0);
+                            }}
+                          >
+                            <ChevronDown size={14} />
+                            {(pendingApprovals.length || unseenReplies) > 0 && (
+                              <span
+                                className={
+                                  pendingApprovals.length || selectedChat?.error
+                                    ? "chat-jump-badge attention"
+                                    : "chat-jump-badge"
+                                }
+                              >
+                                {pendingApprovals.length || unseenReplies}
+                              </span>
+                            )}
+                          </button>
+                        )}
                         <div className="composer-area">
                           <div className="composer">
                             <textarea
@@ -1647,11 +1718,11 @@ export default function App() {
           </span>
           <span className="statusbar-right">
             <button
-              title="Provider-reported API tokens for this repository. CLI subscription usage is not collected."
+              title="Tokens this workspace has used, as the provider reported them. API runs are billed to your key; CLI runs spend the subscription of the tool that ran them."
               onClick={() => setView("usage")}
             >
               <Zap size={12} />
-              {compact(projectTokens)} API tokens · CLI —
+              {compact(projectTokens)} API · {compact(projectCliTokens)} CLI
             </button>
             <button
               title="Running agent processes / saved agents in this repository"

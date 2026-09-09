@@ -621,12 +621,15 @@ function register() {
     const controller = new AbortController();
     requests.set(chat.id, controller);
     const startedAt = Date.now();
-    const timeout = setTimeout(() => controller.abort(), 180000);
     save();
     const streams =
       usesCli &&
       chat.provider !== "opencode-cli" &&
       (chat.mode || "agent") !== "ask";
+    const timeout = setTimeout(
+      () => controller.abort(),
+      streams ? 30 * 60000 : 3 * 60000,
+    );
     try {
       if (streams) {
         // The card needs to say which conversation is asking, and cancelling
