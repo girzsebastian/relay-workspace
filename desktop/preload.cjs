@@ -56,6 +56,7 @@ const allowed = new Set([
   "chat:send",
   "chat:cancel",
   "chat:configure",
+  "chat:revert",
   "approval:resolve",
   "recovery:report",
   "sessions:summaries",

@@ -654,10 +654,13 @@ function register() {
         const prompt = cliPrompt(
           chat.messages.map((m) => ({ role: m.role, content: m.content })),
         );
+        const workspacePath = store.project(chat.projectId).path;
+        const before = await git.snapshot(workspacePath).catch(() => null);
         const reply = {
           id: crypto.randomUUID(),
           role: "assistant",
           content: "",
+          snapshot: before,
           steps: [],
           createdAt: Date.now(),
         };
@@ -692,6 +695,11 @@ function register() {
         reply.steps = stream.steps;
         reply.content = stream.text || reply.content || "";
         reply.durationMs = Date.now() - startedAt;
+        // Recorded once, when the run ends: the list is what this reply did,
+        // not what the working tree happens to hold later.
+        reply.changed = before
+          ? await git.changesSince(workspacePath, before).catch(() => [])
+          : [];
         chat.status = "idle";
         store.data.usage.push({
           id: crypto.randomUUID(),
@@ -906,6 +914,35 @@ function register() {
       sessionExists: providerSessionExists,
     });
     return { report, summary: summarise(report) };
+  });
+  ipc("chat:revert", z.object({ id, messageId: id }), async (a) => {
+    const chat = store.chat(a.id);
+    const message = chat.messages.find((m) => m.id === a.messageId);
+    if (!message) throw new Error("That message is no longer here.");
+    if (!message.snapshot)
+      throw new Error(
+        "This reply was not recorded, so Relay cannot tell what it changed.",
+      );
+    const workspace = store.project(chat.projectId).path;
+    // Measured now rather than trusted from before: the person may have
+    // kept or undone some of it since.
+    const repos = await git.changesSince(workspace, message.snapshot);
+    const skipped = [];
+    let reverted = 0;
+    for (const repo of repos) {
+      const paths = repo.files
+        .filter((file) => !file.untracked)
+        .map((file) => file.path);
+      for (const file of repo.files)
+        if (file.untracked) skipped.push(file.path);
+      if (!paths.length) continue;
+      await git.discard(git.resolveRepository(workspace, repo.relative), paths);
+      reverted += paths.length;
+    }
+    message.reverted = { at: Date.now(), files: reverted };
+    save();
+    publish("changed");
+    return { reverted, skipped };
   });
   ipc("chat:modes", z.object({}), () => ({
     modes: modeList(),

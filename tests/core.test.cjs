@@ -1920,3 +1920,55 @@ test("runs with nothing to resume and nothing to say are retired, not hoarded", 
     true,
   );
 });
+
+test("undoing a reply restores what it changed and leaves the rest alone", async (t) => {
+  const dir = temp(t);
+  const { execFile } = require("node:child_process");
+  const { promisify } = require("node:util");
+  const run = promisify(execFile);
+  fs.writeFileSync(path.join(dir, "kept.txt"), "original\n");
+  fs.writeFileSync(path.join(dir, "mine.txt"), "mine\n");
+  await run("git", ["init", "-b", "main"], { cwd: dir });
+  await run("git", ["config", "user.email", "t@example.com"], { cwd: dir });
+  await run("git", ["config", "user.name", "T"], { cwd: dir });
+  await run("git", ["add", "."], { cwd: dir });
+  await run("git", ["commit", "-m", "first"], { cwd: dir });
+
+  // The person edits a file before asking anything.
+  fs.writeFileSync(path.join(dir, "mine.txt"), "mine, edited by hand\n");
+  const before = await gitModule.snapshot(dir);
+
+  // The reply edits one file and creates another.
+  fs.writeFileSync(path.join(dir, "kept.txt"), "changed by the reply\n");
+  fs.writeFileSync(path.join(dir, "created.txt"), "new file\n");
+
+  const repos = await gitModule.changesSince(dir, before);
+  const files = repos.flatMap((repo) => repo.files.map((f) => f.path)).sort();
+  // The hand edit was already dirty at snapshot time, so it is not this reply's.
+  assert.deepEqual(files, ["created.txt", "kept.txt"]);
+
+  const tracked = repos
+    .flatMap((repo) => repo.files)
+    .filter((file) => !file.untracked)
+    .map((file) => file.path);
+  const result = await gitModule.discard(dir, [
+    ...tracked,
+    ...repos
+      .flatMap((repo) => repo.files)
+      .filter((file) => file.untracked)
+      .map((file) => file.path),
+  ]);
+  assert.deepEqual(result.skippedUntracked, ["created.txt"]);
+  assert.equal(
+    fs.readFileSync(path.join(dir, "kept.txt"), "utf8"),
+    "original\n",
+    "the reply's edit is undone",
+  );
+  assert.equal(
+    fs.readFileSync(path.join(dir, "mine.txt"), "utf8"),
+    "mine, edited by hand\n",
+    "work done before the reply is untouched",
+  );
+  // A file the reply created still exists: git cannot restore an untracked file.
+  assert.ok(fs.existsSync(path.join(dir, "created.txt")));
+});

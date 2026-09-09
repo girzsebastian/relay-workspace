@@ -72,6 +72,7 @@ import SettingsView from "./SettingsView";
 import ChatSteps from "./ChatSteps";
 import Markdown from "./Markdown";
 import ApprovalCard from "./ApprovalCard";
+import ChatMessage from "./ChatMessage";
 import RecoveryPanel from "./RecoveryPanel";
 import Editor from "./Editor";
 import TerminalDeck, { LayoutButtons } from "./TerminalDeck";
@@ -1095,45 +1096,25 @@ export default function App() {
                             </div>
                           ) : (
                             selectedChat.messages.map((m) => (
-                              <div
+                              <ChatMessage
                                 key={m.id}
-                                className={`chat-message ${m.role}`}
-                              >
-                                <div className="message-author">
-                                  {m.role === "user" ? (
-                                    <span className="tiny-avatar">Y</span>
-                                  ) : (
-                                    <Bot size={15} />
-                                  )}
-                                  <b>
-                                    {m.role === "user"
-                                      ? "You"
-                                      : roleInfo.find(
-                                          (r) => r.id === selectedChat.role,
-                                        )?.name}
-                                  </b>
-                                </div>
-                                {m.steps && m.steps.length > 0 && (
-                                  <ChatSteps
-                                    steps={m.steps}
-                                    durationMs={m.durationMs}
-                                    running={
-                                      selectedChat.status === "running" &&
-                                      m ===
-                                        selectedChat.messages[
-                                          selectedChat.messages.length - 1
-                                        ]
-                                    }
-                                  />
-                                )}
-                                <div className="message-text">
-                                  {m.role === "assistant" ? (
-                                    <Markdown text={m.content} />
-                                  ) : (
-                                    m.content
-                                  )}
-                                </div>
-                              </div>
+                                message={m}
+                                chat={selectedChat}
+                                projectId={projectId || ""}
+                                roleName={
+                                  roleInfo.find(
+                                    (r) => r.id === selectedChat.role,
+                                  )?.name
+                                }
+                                running={
+                                  selectedChat.status === "running" &&
+                                  m ===
+                                    selectedChat.messages[
+                                      selectedChat.messages.length - 1
+                                    ]
+                                }
+                                onError={showError}
+                              />
                             ))
                           )}
                           {pendingApprovals.map((approval) => (

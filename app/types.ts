@@ -210,6 +210,14 @@ export type Chat = {
     createdAt: number;
     steps?: ChatStep[];
     durationMs?: number;
+    snapshot?: unknown;
+    changed?: {
+      relative: string;
+      name: string;
+      files: GitFile[];
+      committed: boolean;
+    }[];
+    reverted?: { at: number; files: number };
   }[];
 };
 export type Usage = {
