@@ -24,7 +24,18 @@ function initialState() {
     usage: [],
     agents: [],
     tasks: [],
-    settings: { provider: "openai", models: { openai: "", anthropic: "" } },
+    settings: {
+      runMode: "auto-review",
+      allowlist: [],
+      provider: "openai",
+      models: {
+        openai: "",
+        anthropic: "",
+        "claude-cli": "",
+        "codex-cli": "",
+        "opencode-cli": "",
+      },
+    },
     ui: {
       view: "overview",
       projectId: null,
@@ -76,6 +87,9 @@ class Store {
     migrateAgents(this.data);
     this.data.ui = { ...initialState().ui, ...this.data.ui };
     if (this.data.ui.view === "overview") this.data.ui.view = "workspace";
+    // Search, source control and containers became sidebar panels, not pages.
+    if (["search", "source-control", "containers"].includes(this.data.ui.view))
+      this.data.ui.view = "workspace";
     for (const project of this.data.projects)
       project.editor ??= {
         tabs: project.draft ? [project.draft] : [],

@@ -24,7 +24,12 @@ npm run dev
 
 Open a project folder. Then use **Codex**, **Claude Code**, **OpenCode**, or **Terminal** in the workspace toolbar. Relay runs those tools on your computer, in that folder. CLI installation detection does not verify login or subscription access.
 
-For a graphical conversation, open **Settings & providers**, choose OpenAI or Anthropic, enter an exact model ID available to your account, and add an API key. Chat uses separate provider API billing. No model request is made merely by launching Relay or saving settings.
+For a graphical conversation, open **Settings & providers** and choose where chat runs.
+
+- **An installed CLI** (Claude Code, Codex, or OpenCode) runs on this computer with that tool's own login, so chat spends the subscription you already pay for. No API key is required, and the model ID is optional. Chat replies run non-interactively and read-only: Claude Code with no tools, Codex in a read-only sandbox, OpenCode with its `plan` agent. A chat reply cannot edit project files.
+- **An API provider** (OpenAI or Anthropic) needs an exact model ID available to your account and an API key, and is billed separately by that provider.
+
+Relay does not convert one subscription into another provider's credits; it runs the tool you selected. No model request is made merely by launching Relay or saving settings.
 
 ## What works
 
@@ -42,11 +47,16 @@ For a graphical conversation, open **Settings & providers**, choose OpenAI or An
 - Agents have editable names and instructions, saved memory, an optional project skill, a persistent task queue, and run history. Tasks start explicitly and move to review when their CLI session exits.
 - Language-aware code coloring, including PHP, Python, YAML, CSS, HTML, JavaScript/TypeScript, JSON, SQL, shell scripts, and Dockerfiles. File-type badges and measured terminal-output activity add visual context.
 - Open the selected project in an installed Cursor or VS Code application.
-- Saved, multi-turn API chats using OpenAI Responses and Anthropic Messages.
+- Source control: branch and upstream state, changed files with per-file line counts, coloured diffs, commit, push or publish a branch, and per-file discard. Push never creates an upstream silently, and discard never deletes an untracked file.
+- Git decorations in the file explorer, including a mark on folders that contain changes.
+- Project search with match case, whole word, regular expressions, and include/exclude globs. Ignored files are skipped, binary files are not scanned.
+- A container view listing Docker containers, attributed to a workspace by their compose working directory. Relay starts nothing on its own.
+- Settings grouped into categories with a search box across every setting.
+- Saved, multi-turn chats backed either by an installed CLI (Claude Code, Codex, OpenCode) or by the OpenAI Responses and Anthropic Messages APIs.
 - Four chat profiles: Builder, Architect, Reviewer, and Product partner.
 - Optional project `SKILL.md` instructions attached to new API conversations.
 - OS-encrypted API key storage with Electron safeStorage.
-- Provider-reported token counts by repository, model, and provider; cache read/write fields.
+- Provider-reported token counts by repository, model, and provider; cache read/write fields. CLI-backed chats report their own token counts too, recorded as `provider-cli`; interactive CLI terminal sessions remain unmeasured.
 - Explicit build commands with elapsed wall time and exit status.
 - JSON usage export.
 

@@ -35,6 +35,20 @@ fs.writeFileSync(
   path.join(project, ".agents/skills/review/SKILL.md"),
   "# Review\nCheck correctness and explain tradeoffs.\n",
 );
+// The fixture is a real repository so source control, explorer decorations,
+// and search have genuine state to render rather than an empty panel.
+const inProject = (args) =>
+  execFileSync("git", args, { cwd: project, stdio: "ignore" });
+inProject(["init", "-b", "main"]);
+inProject(["config", "user.email", "smoke@example.com"]);
+inProject(["config", "user.name", "Relay Smoke"]);
+inProject(["add", "--all"]);
+inProject(["commit", "-m", "Fixture project"]);
+fs.writeFileSync(
+  path.join(project, "sample.py"),
+  "# A small function\ndef total(price):\n    return price * 3\n",
+);
+fs.writeFileSync(path.join(project, "untracked.txt"), "new file\n");
 fs.mkdirSync(path.join(root, "artifacts"), { recursive: true });
 const env = {
   ...process.env,
@@ -75,6 +89,20 @@ async function screenshot(options) {
     );
   }
 }
+async function pickSession(pane, sessionId) {
+  await page
+    .getByRole("button", { name: `Session in pane ${pane}`, exact: true })
+    .click();
+  if (sessionId)
+    await page
+      .locator(`.session-list button[data-session-id="${sessionId}"]`)
+      .click();
+  else
+    await page
+      .getByRole("option", { name: "Empty this pane", exact: true })
+      .click();
+  await until(async () => (await page.locator(".session-list").count()) === 0);
+}
 async function until(fn, timeout = 12000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
@@ -88,7 +116,7 @@ async function until(fn, timeout = 12000) {
     console.log("Desktop check: launch and editor");
     await launch();
     await page
-      .getByRole("button", { name: "Open project", exact: true })
+      .getByRole("button", { name: "Add workspace", exact: true })
       .first()
       .click();
     await page.getByRole("button", { name: "app.ts", exact: true }).click();
@@ -144,7 +172,7 @@ async function until(fn, timeout = 12000) {
         .readFileSync(path.join(project, "app.ts"), "utf8")
         .includes("Saved in Relay."),
     );
-    await page.getByRole("button", { name: "Terminal", exact: true }).click();
+    await page.getByRole("button", { name: "New shell", exact: true }).click();
     // Drafts must survive view changes as well as disk reloads.
     await page.locator(".cm-content").click();
     await page.keyboard.press(
@@ -343,6 +371,156 @@ async function until(fn, timeout = 12000) {
     await checkViewport();
     await screenshot({ path: path.join(root, "artifacts/workspace.png") });
     console.log("Desktop check: layouts passed");
+
+    // Search, source control, explorer decorations, containers, settings.
+    await page.getByRole("button", { name: "Workspace", exact: true }).click();
+    await page.getByRole("tab", { name: "Search", exact: true }).click();
+    const searchBox = page.getByRole("textbox", {
+      name: "Search text",
+      exact: true,
+    });
+    await searchBox.click();
+    await searchBox.pressSequentially("Checkout");
+    await until(async () => (await searchBox.inputValue()) === "Checkout");
+    await until(async () => (await page.locator(".search-hit").count()) > 0);
+    assert.ok(
+      (await page.locator(".search-results").innerText()).includes(
+        "sample.php",
+      ),
+      "search finds the PHP fixture",
+    );
+    await page
+      .getByRole("button", { name: "Toggle replace", exact: true })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Replace text", exact: true })
+      .waitFor();
+    await screenshot({ path: path.join(root, "artifacts/search.png") });
+    await page
+      .getByRole("button", { name: "Toggle replace", exact: true })
+      .click();
+    // Results group per file and can be collapsed.
+    assert.ok(
+      (await page.locator(".search-count").first().innerText()).length > 0,
+      "each file group shows a match count",
+    );
+    // The include filter lives behind the search details toggle.
+    await page
+      .getByRole("button", { name: "Toggle search details", exact: true })
+      .click();
+    await page
+      .getByRole("textbox", { name: "files to include", exact: true })
+      .fill("*.py");
+    await until(async () => (await page.locator(".search-hit").count()) === 0);
+
+    await page
+      .getByRole("tab", { name: "Source control", exact: true })
+      .click();
+    await until(async () => (await page.locator(".scm-file").count()) >= 2);
+    const changes = await page.locator(".scm-files").innerText();
+    assert.ok(changes.includes("sample.py"), "modified file is listed");
+    assert.ok(changes.includes("untracked.txt"), "untracked file is listed");
+    assert.ok(
+      (await page.locator(".scm-branch").first().innerText()).includes("main"),
+      "the repository branch is shown",
+    );
+    assert.equal(
+      await page.locator(".scm-repo").count(),
+      1,
+      "the fixture workspace holds exactly one repository",
+    );
+    // More actions must open and offer the pull, push and checkout entries.
+    const moreActions = page.getByRole("button", {
+      name: "More actions",
+      exact: true,
+    });
+    await moreActions.click();
+    await page
+      .getByRole("menuitem", { name: "Checkout to…", exact: true })
+      .waitFor();
+    // The rest live in groups, exactly as they do in the reference menu.
+    for (const group of [
+      "Pull, Push",
+      "Commit",
+      "Branch",
+      "Stash",
+      "Worktrees",
+    ])
+      await page.getByRole("menuitem", { name: group, exact: true }).waitFor();
+    await page
+      .getByRole("menuitem", { name: "Pull, Push", exact: true })
+      .click();
+    for (const entry of ["Pull", "Push", "Fetch (Prune)"])
+      await page.getByRole("menuitem", { name: entry, exact: true }).waitFor();
+    await moreActions.click();
+    await until(async () => (await page.locator(".scm-menu").count()) === 0);
+    await screenshot({ path: path.join(root, "artifacts/source-control.png") });
+
+    await page.getByRole("tab", { name: "Containers", exact: true }).click();
+    await until(
+      async () =>
+        (await page
+          .locator(".scm-empty, .container-list, .scm-clean")
+          .count()) > 0,
+    );
+
+    // Explorer decorations come from the same git status.
+    await page.getByRole("tab", { name: "Explorer", exact: true }).click();
+    await until(async () => (await page.locator(".tree-mark").count()) > 0);
+    assert.ok(
+      (await page.locator(".file-explorer").innerText()).includes("sample.py"),
+      "explorer still lists project files",
+    );
+
+    await page
+      .getByRole("button", { name: "Settings & providers", exact: true })
+      .click();
+    await until(async () => (await page.locator(".settings-row").count()) > 0);
+    await page
+      .getByRole("textbox", { name: "Search settings", exact: true })
+      .fill("subscription");
+    await until(
+      async () => (await page.locator(".settings-row").count()) === 1,
+    );
+    await screenshot({ path: path.join(root, "artifacts/settings.png") });
+    assert.equal(
+      await page.locator(".toast, .app-error").count(),
+      0,
+      "no panel raised an error toast",
+    );
+    // The chat composer carries the conversation mode, provider and model.
+    await page.getByRole("button", { name: "Workspace", exact: true }).click();
+    for (const label of ["Chat mode", "Chat provider", "Chat model"])
+      await page.getByLabel(label, { exact: true }).waitFor();
+    await page
+      .getByLabel("Chat mode", { exact: true })
+      .selectOption("reviewer");
+    // A changed file opens in the editor rather than only in a dialog.
+    await page
+      .getByRole("tab", { name: "Source control", exact: true })
+      .click();
+    await page
+      .locator(".scm-file")
+      .filter({ hasText: "sample.py" })
+      .first()
+      .click();
+    await page.getByRole("tab", { name: "Explorer", exact: true }).click();
+    await until(async () =>
+      (await api("state")).projects[0].editor.tabs.some(
+        (t) => t.path === "sample.py",
+      ),
+    );
+    // Leave the editor as the later restart check expects to find it.
+    await page
+      .getByRole("button", { name: "Close sample.py", exact: true })
+      .first()
+      .click();
+    await until(async () =>
+      (await api("state")).projects[0].editor.tabs.every(
+        (t) => t.path !== "sample.py",
+      ),
+    );
+    console.log("Desktop check: panels passed");
     const shells = [shell];
     for (let i = 1; i < 4; i++)
       shells.push(await api("terminal:start", { projectId, kind: "shell" }));
@@ -353,20 +531,10 @@ async function until(fn, timeout = 12000) {
     for (let i = 0; i < 4; i++) {
       const id = shells[i].id;
       // Assign through the UI, avoiding a session already displayed in another slot.
-      await page
-        .getByRole("combobox", {
-          name: `Session in pane ${i + 1}`,
-          exact: true,
-        })
-        .selectOption("");
+      await pickSession(i + 1, null);
     }
     for (let i = 0; i < 4; i++) {
-      await page
-        .getByRole("combobox", {
-          name: `Session in pane ${i + 1}`,
-          exact: true,
-        })
-        .selectOption(shells[i].id);
+      await pickSession(i + 1, shells[i].id);
       await api("terminal:write", {
         id: shells[i].id,
         data:
@@ -415,9 +583,76 @@ async function until(fn, timeout = 12000) {
       (await api("state")).sessions.find((s) => s.id === shell.id).status,
       "running",
     );
+    await pickSession(1, shell.id);
+    // The provider must not be printed twice when a session has no name of
+    // its own: "Shell · … · Shell" is what that bug looked like.
+    const picker = page
+      .getByRole("button", { name: "Session in pane 1", exact: true })
+      .first();
+    const shown = await picker.innerText();
+    assert.equal(
+      shown.split("Shell").length - 1,
+      1,
+      `session label names the provider once, not twice: ${shown}`,
+    );
+    assert.ok(
+      (await picker.getAttribute("title")).includes("launchpad"),
+      "hovering shows the fuller description",
+    );
+    // A stopped session can be retired from the list without leaving it.
     await page
-      .getByRole("combobox", { name: "Session in pane 1", exact: true })
-      .selectOption(shell.id);
+      .getByRole("button", { name: "Session in pane 1", exact: true })
+      .first()
+      .click();
+    const rows = await page.locator(".picker-row").count();
+    // A class name shared with an unrelated component collapsed these rows
+    // once; the label has to be visible, not merely present.
+    const firstRow = page.locator(".picker-row .session-label").first();
+    // Present in the DOM is not the same as visible: a sibling control once
+    // claimed the whole row and squeezed this to nothing.
+    // The control floats over the row rather than taking a column of its
+    // own, so the option keeps the full width.
+    const pickerRowBox = await page
+      .locator(".picker-row")
+      .first()
+      .boundingBox();
+    const optionBox = await page
+      .locator('.picker-row > button[role="option"]')
+      .first()
+      .boundingBox();
+    assert.ok(
+      optionBox.width > pickerRowBox.width - 4,
+      `the option spans the row (${optionBox.width} of ${pickerRowBox.width})`,
+    );
+    assert.ok(
+      Math.abs(
+        optionBox.y +
+          optionBox.height / 2 -
+          (pickerRowBox.y + pickerRowBox.height / 2),
+      ) < 2,
+      "the row content stays vertically centred",
+    );
+    const labelBox = await firstRow.boundingBox();
+    assert.ok(
+      labelBox.width > 40,
+      `each row shows its label (${labelBox.width}px wide)`,
+    );
+    const rowBox = await page.locator(".picker-row").first().boundingBox();
+    assert.ok(
+      rowBox.height < 90,
+      `a row stays compact rather than inheriting foreign padding (${rowBox.height}px)`,
+    );
+    assert.ok(rows > 0, "the list offers sessions");
+    // A running session must not be removable: it is still doing something.
+    assert.equal(
+      await page.locator(".picker-row .session-dismiss:disabled").count(),
+      await page.locator(".picker-row .session-live").count(),
+      "only running sessions refuse to be removed",
+    );
+    await page.keyboard.press("Escape");
+    await until(
+      async () => (await page.locator(".session-list").count()) === 0,
+    );
     await checkViewport();
     await screenshot({
       path: path.join(root, "artifacts/terminal-grid.png"),
@@ -455,10 +690,33 @@ async function until(fn, timeout = 12000) {
     await page
       .getByRole("textbox", { name: "Queued task", exact: true })
       .fill("Review the checkout UI.");
+    await page.getByRole("button", { name: "Queue", exact: true }).click();
     await page
-      .getByRole("button", { name: "Add to queue", exact: true })
+      .getByText("Review the checkout UI.", { exact: true })
+      .first()
+      .waitFor();
+    assert.equal(
+      await page.getByLabel("Agent provider", { exact: true }).inputValue(),
+      "claude",
+      "the composer shows which CLI runs this agent",
+    );
+    await page
+      .getByLabel("Agent provider", { exact: true })
+      .selectOption("codex");
+    await until(
+      async () => (await api("state")).agents[0].provider === "codex",
+    );
+    await page.getByLabel("Agent model", { exact: true }).fill("sonnet");
+    await page
+      .getByRole("textbox", { name: "Queued task", exact: true })
       .click();
-    await page.getByText("Review the checkout UI.", { exact: true }).waitFor();
+    await until(async () => (await api("state")).agents[0].model === "sonnet");
+    assert.ok(
+      (await page.locator(".composer-queue-title").innerText()).includes(
+        "Queued",
+      ),
+      "queued follow-ups are listed above the composer",
+    );
     await page.getByRole("tab", { name: "Memory", exact: true }).click();
     await page
       .getByRole("textbox", { name: "Memory", exact: true })
@@ -543,6 +801,30 @@ async function until(fn, timeout = 12000) {
     await exited;
     desktop = null;
     await launch();
+    // A crash must announce itself, across the content area rather than
+    // squeezed into whatever grid cell was left over.
+    const strip = page.locator(".recovery-strip");
+    await strip.waitFor();
+    assert.match(
+      await strip.locator("header b").innerText(),
+      /Relay stopped while/,
+    );
+    const stripBox = await strip.boundingBox();
+    const shellBox = await page.locator(".app-shell").boundingBox();
+    assert.ok(
+      stripBox.width > shellBox.width * 0.8,
+      `recovery banner spans the content area (${stripBox.width} of ${shellBox.width})`,
+    );
+    await page
+      .getByRole("button", { name: "Show what was running", exact: true })
+      .click();
+    await until(async () => (await page.locator(".recovery-row").count()) > 0);
+    assert.ok(
+      (await page.locator(".recovery-main").first().innerText()).length > 10,
+      "each interrupted run is described",
+    );
+    await screenshot({ path: path.join(root, "artifacts/recovery.png") });
+    await page.getByRole("button", { name: "Hide", exact: true }).click();
     const recovered = await api("state");
     assert.equal(
       recovered.projects[0].editor.tabs

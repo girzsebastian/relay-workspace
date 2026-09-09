@@ -3,7 +3,7 @@ import { languageForFile } from "./languages";
 import { useEffect, useRef, useState } from "react";
 import { Columns2, FileCode2, RotateCcw, Save, X } from "lucide-react";
 import Editor from "./Editor";
-import FileTree from "./FileTree";
+import Sidebar from "./Sidebar";
 import ResizeHandle from "./ResizeHandle";
 import {
   call,
@@ -18,11 +18,15 @@ export default function EditorWorkspace({
   preferences,
   onPreferences,
   onError,
+  openRequest,
+  projects,
 }: {
   project: Project;
+  projects: Project[];
   preferences: Preferences;
   onPreferences: (patch: Partial<Preferences>) => void;
   onError: (error: unknown) => void;
+  openRequest?: { path: string; token: number } | null;
 }) {
   const [editor, setEditor] = useState<EditorState>(
     () =>
@@ -78,6 +82,11 @@ export default function EditorWorkspace({
       onError(error);
     }
   };
+  // A search result asks the editor to open a file it does not own.
+  useEffect(() => {
+    if (openRequest?.path) void open(openRequest.path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequest?.token]);
   const save = async () => {
     const state = current.current,
       path =
@@ -309,10 +318,14 @@ export default function EditorWorkspace({
     >
       {preferences.showExplorer && (
         <>
-          <FileTree
+          <Sidebar
             project={project}
+            projects={projects}
+            panel={preferences.sidebarPanel || "explorer"}
+            onPanel={(sidebarPanel) => onPreferences({ sidebarPanel })}
             selected={active || undefined}
-            onOpen={(entry) => void open(entry.path)}
+            onOpenEntry={(entry) => void open(entry.path)}
+            onOpenPath={(path) => void open(path)}
             onError={onError}
           />
           <ResizeHandle

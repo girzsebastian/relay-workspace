@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import AgentChanges from "./AgentChanges";
 import {
+  ArrowUp,
   BookOpen,
   Check,
   Clock3,
@@ -8,6 +10,7 @@ import {
   Save,
   Settings2,
   TerminalSquare,
+  Trash2,
   X,
 } from "lucide-react";
 import { call, type Agent, type Session, type State } from "./types";
@@ -19,12 +22,14 @@ export default function AgentDetails({
   onClose,
   onOpen,
   onError,
+  docked,
 }: {
   agent: Agent;
   state: State;
   onClose: () => void;
   onOpen: (session: Session) => void;
   onError: (error: unknown) => void;
+  docked?: boolean;
 }) {
   const [tab, setTab] = useState("tasks"),
     [text, setText] = useState(""),
@@ -41,6 +46,11 @@ export default function AgentDetails({
       .slice()
       .reverse(),
     running = runs.some((s) => s.status === "running"),
+    queued = tasks.filter((t) => t.status === "queued"),
+    latestRun = runs[0],
+    peers = state.agents.filter(
+      (a) => a.id !== agent.id && a.projectId === agent.projectId,
+    ),
     dirty =
       name !== agent.name ||
       instructions !== agent.instructions ||
@@ -97,56 +107,93 @@ export default function AgentDetails({
     )
       onOpen(session);
   };
-  return (
-    <div className="agent-detail-backdrop">
-      <section
-        ref={panel}
-        className="agent-detail"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${agent.name} details`}
-      >
-        <header>
-          <div className={`agent-avatar ${agent.provider}`}>
-            <TerminalSquare size={21} />
-          </div>
-          <div>
-            <h2>{agent.name}</h2>
-            <span>
-              {providerNames[agent.provider]} ·{" "}
-              {state.projects.find((p) => p.id === agent.projectId)?.name}
-            </span>
-          </div>
-          <button title="Close agent details" onClick={close}>
-            <X size={18} />
-          </button>
-        </header>
-        <div className="detail-tabs" role="tablist" aria-label="Agent details">
-          {[
-            { id: "tasks", name: "Tasks", icon: ListTodo },
-            { id: "memory", name: "Memory", icon: BookOpen },
-            { id: "history", name: "History", icon: Clock3 },
-            { id: "settings", name: "Instructions", icon: Settings2 },
-          ].map((t) => (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-            >
-              <t.icon size={14} />
-              {t.name}
-              {t.id === "tasks" && (
-                <span>{tasks.filter((t) => t.status === "queued").length}</span>
-              )}
-            </button>
-          ))}
+  const body = (
+    <>
+      <header>
+        <div className={`agent-avatar ${agent.provider}`}>
+          <TerminalSquare size={21} />
         </div>
-        <div className="detail-body">
-          {tab === "tasks" && (
-            <>
+        <div>
+          <h2>{agent.name}</h2>
+          <span>
+            {providerNames[agent.provider]} ·{" "}
+            {state.projects.find((p) => p.id === agent.projectId)?.name}
+          </span>
+        </div>
+        <button title="Close agent details" onClick={close}>
+          <X size={18} />
+        </button>
+      </header>
+      <div className="detail-tabs" role="tablist" aria-label="Agent details">
+        {[
+          { id: "tasks", name: "Tasks", icon: ListTodo },
+          { id: "memory", name: "Memory", icon: BookOpen },
+          { id: "history", name: "History", icon: Clock3 },
+          { id: "settings", name: "Instructions", icon: Settings2 },
+        ].map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+          >
+            <t.icon size={14} />
+            {t.name}
+            {t.id === "tasks" && (
+              <span>{tasks.filter((t) => t.status === "queued").length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="detail-body">
+        {tab === "tasks" && (
+          <>
+            <div className="agent-composer">
+              {queued.length > 0 && (
+                <div className="composer-queue">
+                  <span className="composer-queue-title">
+                    {queued.length} Queued
+                  </span>
+                  {queued.map((task) => (
+                    <div className="composer-queued" key={task.id}>
+                      <p title={task.text}>{task.text}</p>
+                      <button
+                        title="Start this task now"
+                        aria-label={`Start ${task.text}`}
+                        disabled={busy || running}
+                        onClick={() =>
+                          attempt(() => call("task:start", { id: task.id }))
+                        }
+                      >
+                        <ArrowUp size={13} />
+                      </button>
+                      <button
+                        title="Remove from the queue"
+                        aria-label={`Remove ${task.text}`}
+                        disabled={busy}
+                        onClick={() =>
+                          attempt(() =>
+                            call("task:resolve", {
+                              id: task.id,
+                              status: "cancelled",
+                            }),
+                          )
+                        }
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {latestRun && latestRun.snapshot && (
+                <AgentChanges
+                  projectId={latestRun.projectId}
+                  sessionId={latestRun.id}
+                  onError={onError}
+                />
+              )}
               <form
-                className="task-composer"
                 onSubmit={(e) => {
                   e.preventDefault();
                   void attempt(async () => {
@@ -157,177 +204,282 @@ export default function AgentDetails({
               >
                 <textarea
                   aria-label="Queued task"
-                  placeholder="Add a task…"
+                  placeholder={
+                    queued.length || running
+                      ? "Add a follow-up…"
+                      : "Describe the task for this agent…"
+                  }
                   required
                   maxLength={20000}
                   rows={3}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                 />
-                <button
-                  className="button primary"
-                  disabled={busy || !text.trim()}
-                  type="submit"
-                >
-                  Add to queue
-                </button>
+                <div className="composer-bar">
+                  <select
+                    aria-label="Agent provider"
+                    value={agent.provider}
+                    disabled={busy || running}
+                    onChange={(e) =>
+                      attempt(() =>
+                        call("agent:update", {
+                          id: agent.id,
+                          changes: {
+                            name,
+                            instructions,
+                            memory,
+                            provider: e.target.value,
+                            model: agent.model || "",
+                          },
+                        }),
+                      )
+                    }
+                  >
+                    <option value="codex">Codex</option>
+                    <option value="claude">Claude Code</option>
+                    <option value="opencode">OpenCode</option>
+                  </select>
+                  <input
+                    aria-label="Agent model"
+                    className="composer-model"
+                    list="relay-model-aliases"
+                    placeholder="Auto"
+                    defaultValue={agent.model || ""}
+                    disabled={busy || running}
+                    onBlur={(e) => {
+                      if ((agent.model || "") === e.target.value.trim()) return;
+                      void attempt(() =>
+                        call("agent:update", {
+                          id: agent.id,
+                          changes: {
+                            name,
+                            instructions,
+                            memory,
+                            provider: agent.provider,
+                            model: e.target.value.trim(),
+                          },
+                        }),
+                      );
+                    }}
+                  />
+                  <datalist id="relay-model-aliases">
+                    <option value="opus" />
+                    <option value="sonnet" />
+                    <option value="haiku" />
+                  </datalist>
+                  <button
+                    className="button primary compact"
+                    disabled={busy || !text.trim()}
+                    type="submit"
+                  >
+                    Queue
+                  </button>
+                  {peers.length > 0 && (
+                    <select
+                      aria-label="Hand off to"
+                      value=""
+                      disabled={busy || !text.trim()}
+                      title={
+                        text.trim()
+                          ? "Give this stage to another agent"
+                          : "Write what the other agent should do first"
+                      }
+                      onChange={(e) => {
+                        const toId = e.target.value;
+                        if (!toId) return;
+                        void attempt(async () => {
+                          await call("agent:handoff", {
+                            fromId: agent.id,
+                            toId,
+                            text,
+                          });
+                          setText("");
+                        });
+                      }}
+                    >
+                      <option value="">Hand off to…</option>
+                      {peers.map((peer) => (
+                        <option key={peer.id} value={peer.id}>
+                          {peer.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    className="button compact"
+                    disabled={busy || running || !text.trim()}
+                    type="button"
+                    title="Queue this and start it now"
+                    onClick={() =>
+                      attempt(async () => {
+                        await call("agent:start", {
+                          id: agent.id,
+                          task: text,
+                        });
+                        setText("");
+                      })
+                    }
+                  >
+                    Send
+                  </button>
+                </div>
               </form>
-              <div className="task-list">
-                {[...tasks]
-                  .sort(
-                    (a, b) =>
-                      Number(b.status === "queued") -
-                        Number(a.status === "queued") ||
-                      b.createdAt - a.createdAt,
-                  )
-                  .map((task) => (
-                    <article className="task-item" key={task.id}>
-                      <div>
-                        <span className={`task-status ${task.status}`}>
-                          {task.status === "review"
-                            ? "Needs review"
-                            : task.status}
-                        </span>
-                        <time>
-                          {new Date(task.createdAt).toLocaleDateString()}
-                        </time>
-                      </div>
-                      <p>{task.text}</p>
-                      {task.error && (
-                        <small className="inline-error">{task.error}</small>
-                      )}
-                      <footer>
-                        {task.status === "queued" && (
-                          <>
-                            <button
-                              disabled={busy}
-                              onClick={() =>
-                                void attempt(async () => {
-                                  await call("task:resolve", {
-                                    id: task.id,
-                                    status: "cancelled",
-                                  });
-                                })
-                              }
-                            >
-                              <X size={12} />
-                              Remove
-                            </button>
-                            <button
-                              disabled={busy || running}
-                              title={
-                                running
-                                  ? "Stop the current session first"
-                                  : "Start task"
-                              }
-                              onClick={() =>
-                                void attempt(async () => {
-                                  const session = await call<Session>(
-                                    "task:start",
-                                    { id: task.id },
-                                  );
-                                  openSession(session);
-                                })
-                              }
-                            >
-                              <Play size={12} />
-                              Start
-                            </button>
-                          </>
-                        )}
-                        {task.sessionId && (
-                          <button
-                            onClick={() => {
-                              const s = state.sessions.find(
-                                (s) => s.id === task.sessionId,
-                              );
-                              if (s) openSession(s);
-                            }}
-                          >
-                            <TerminalSquare size={12} />
-                            Open session
-                          </button>
-                        )}
-                        {["review", "interrupted", "failed"].includes(
-                          task.status,
-                        ) && (
+            </div>
+            <div className="task-list">
+              {/* The queue lives in the composer; this list is what happened. */}
+              {tasks
+                .filter((t) => t.status !== "queued")
+                .slice()
+                .sort((a, b) => b.createdAt - a.createdAt)
+                .map((task) => (
+                  <article className="task-item" key={task.id}>
+                    <div>
+                      <span className={`task-status ${task.status}`}>
+                        {task.status === "review"
+                          ? "Needs review"
+                          : task.status}
+                      </span>
+                      <time>
+                        {new Date(task.createdAt).toLocaleDateString()}
+                      </time>
+                    </div>
+                    <p>{task.text}</p>
+                    {task.error && (
+                      <small className="inline-error">{task.error}</small>
+                    )}
+                    <footer>
+                      {task.status === "queued" && (
+                        <>
                           <button
                             disabled={busy}
                             onClick={() =>
                               void attempt(async () => {
                                 await call("task:resolve", {
                                   id: task.id,
-                                  status: "done",
+                                  status: "cancelled",
                                 });
                               })
                             }
                           >
-                            <Check size={12} />
-                            Mark done
+                            <X size={12} />
+                            Remove
                           </button>
-                        )}
-                      </footer>
-                    </article>
-                  ))}
+                          <button
+                            disabled={busy || running}
+                            title={
+                              running
+                                ? "Stop the current session first"
+                                : "Start task"
+                            }
+                            onClick={() =>
+                              void attempt(async () => {
+                                const session = await call<Session>(
+                                  "task:start",
+                                  { id: task.id },
+                                );
+                                openSession(session);
+                              })
+                            }
+                          >
+                            <Play size={12} />
+                            Start
+                          </button>
+                        </>
+                      )}
+                      {task.sessionId && (
+                        <button
+                          onClick={() => {
+                            const s = state.sessions.find(
+                              (s) => s.id === task.sessionId,
+                            );
+                            if (s) openSession(s);
+                          }}
+                        >
+                          <TerminalSquare size={12} />
+                          Open session
+                        </button>
+                      )}
+                      {["review", "interrupted", "failed"].includes(
+                        task.status,
+                      ) && (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void attempt(async () => {
+                              await call("task:resolve", {
+                                id: task.id,
+                                status: "done",
+                              });
+                            })
+                          }
+                        >
+                          <Check size={12} />
+                          Mark done
+                        </button>
+                      )}
+                    </footer>
+                  </article>
+                ))}
+            </div>
+            {!tasks.length && (
+              <div className="detail-empty">
+                <ListTodo size={24} />
+                <p>No tasks yet</p>
               </div>
-              {!tasks.length && (
-                <div className="detail-empty">
-                  <ListTodo size={24} />
-                  <p>No tasks yet</p>
-                </div>
-              )}
-            </>
-          )}
-          {tab === "memory" && (
+            )}
+          </>
+        )}
+        {tab === "memory" && (
+          <div className="agent-field">
+            <label htmlFor="agent-memory">Memory</label>
+            <p>Notes and decisions included with this agent’s new tasks.</p>
+            <textarea
+              id="agent-memory"
+              rows={16}
+              maxLength={20000}
+              value={memory}
+              onChange={(e) => {
+                setMemory(e.target.value);
+                setSaved(false);
+              }}
+              placeholder="Project decisions, conventions, things to remember…"
+            />
+          </div>
+        )}
+        {tab === "settings" && (
+          <>
             <div className="agent-field">
-              <label htmlFor="agent-memory">Memory</label>
-              <p>Notes and decisions included with this agent’s new tasks.</p>
-              <textarea
-                id="agent-memory"
-                rows={16}
-                maxLength={20000}
-                value={memory}
+              <label htmlFor="agent-name">Name</label>
+              <input
+                id="agent-name"
+                maxLength={60}
+                value={name}
                 onChange={(e) => {
-                  setMemory(e.target.value);
+                  setName(e.target.value);
                   setSaved(false);
                 }}
-                placeholder="Project decisions, conventions, things to remember…"
               />
             </div>
-          )}
-          {tab === "settings" && (
-            <>
-              <div className="agent-field">
-                <label htmlFor="agent-name">Name</label>
-                <input
-                  id="agent-name"
-                  maxLength={60}
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setSaved(false);
-                  }}
-                />
-              </div>
-              <div className="agent-field">
-                <label htmlFor="agent-instructions">Instructions</label>
-                <textarea
-                  id="agent-instructions"
-                  maxLength={20000}
-                  rows={12}
-                  value={instructions}
-                  onChange={(e) => {
-                    setInstructions(e.target.value);
-                    setSaved(false);
-                  }}
-                />
-              </div>
-            </>
-          )}
-          {tab === "history" && (
-            <div className="run-history">
-              {runs.map((run) => (
-                <button key={run.id} onClick={() => openSession(run)}>
+            <div className="agent-field">
+              <label htmlFor="agent-instructions">Instructions</label>
+              <textarea
+                id="agent-instructions"
+                maxLength={20000}
+                rows={12}
+                value={instructions}
+                onChange={(e) => {
+                  setInstructions(e.target.value);
+                  setSaved(false);
+                }}
+              />
+            </div>
+          </>
+        )}
+        {tab === "history" && (
+          <div className="run-history">
+            {runs.map((run) => (
+              <div key={run.id} className="run-entry">
+                <button onClick={() => openSession(run)}>
                   <TerminalSquare size={16} />
                   <div>
                     <strong>{run.title}</strong>
@@ -346,39 +498,71 @@ export default function AgentDetails({
                     {run.status}
                   </span>
                 </button>
-              ))}
-              {!runs.length && (
-                <div className="detail-empty">
-                  <Clock3 size={24} />
-                  <p>No sessions yet</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {(tab === "memory" || tab === "settings") && (
-          <footer className="detail-save">
-            <span>
-              {saved && !dirty ? "Saved" : dirty ? "Unsaved changes" : ""}
-            </span>
-            <button
-              className="button primary"
-              disabled={busy || !dirty || !name.trim()}
-              onClick={() =>
-                void attempt(async () => {
-                  await call("agent:update", {
-                    id: agent.id,
-                    changes: { name, instructions, memory },
-                  });
-                  setSaved(true);
-                })
-              }
-            >
-              <Save size={13} />
-              Save agent
-            </button>
-          </footer>
+                {run.snapshot && run.status !== "running" && (
+                  <AgentChanges
+                    projectId={run.projectId}
+                    sessionId={run.id}
+                    onError={onError}
+                  />
+                )}
+              </div>
+            ))}
+            {!runs.length && (
+              <div className="detail-empty">
+                <Clock3 size={24} />
+                <p>No sessions yet</p>
+              </div>
+            )}
+          </div>
         )}
+      </div>
+      {(tab === "memory" || tab === "settings") && (
+        <footer className="detail-save">
+          <span>
+            {saved && !dirty ? "Saved" : dirty ? "Unsaved changes" : ""}
+          </span>
+          <button
+            className="button primary"
+            disabled={busy || !dirty || !name.trim()}
+            onClick={() =>
+              void attempt(async () => {
+                await call("agent:update", {
+                  id: agent.id,
+                  changes: { name, instructions, memory },
+                });
+                setSaved(true);
+              })
+            }
+          >
+            <Save size={13} />
+            Save agent
+          </button>
+        </footer>
+      )}
+    </>
+  );
+  // Docked on the board it is a column beside the agents; opened from anywhere
+  // else it stays a dialog over the page.
+  if (docked)
+    return (
+      <aside
+        ref={panel}
+        className="agent-detail agent-dock"
+        aria-label={`${agent.name} details`}
+      >
+        {body}
+      </aside>
+    );
+  return (
+    <div className="agent-detail-backdrop">
+      <section
+        ref={panel}
+        className="agent-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${agent.name} details`}
+      >
+        {body}
       </section>
     </div>
   );

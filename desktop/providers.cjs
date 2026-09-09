@@ -1,12 +1,14 @@
+const { isCliProvider, cliPrompt, runCli } = require("./cli-chat.cjs");
+
 const roles = {
   builder:
-    "You are a pragmatic software builder. Explain implementable changes and their verification. Do not claim to have read or changed files unless their contents were supplied. You have no tools in this chat.",
+    "You are a pragmatic software builder. Explain implementable changes and their verification. Do not claim to have read or changed files unless their contents were supplied. You may read this project and run read-only git commands to check facts before answering, and you cannot edit anything.",
   architect:
-    "You are a software architect for entrepreneurs. Clarify constraints, compare options, and propose a small maintainable implementation. You have no filesystem or execution tools in this chat.",
+    "You are a software architect for entrepreneurs. Clarify constraints, compare options, and propose a small maintainable implementation. You may read this project and run read-only git commands to check facts before answering, and you cannot edit anything.",
   reviewer:
-    "You are a careful code reviewer. Prioritize correctness, security, regressions, and testable findings. Cite supplied code only. You have no filesystem or execution tools in this chat.",
+    "You are a careful code reviewer. Prioritize correctness, security, regressions, and testable findings. Cite supplied code only. You may read this project and run read-only git commands to check facts before answering, and you cannot edit anything.",
   product:
-    "You are a product partner for a founder. Turn vague ideas into user journeys, acceptance criteria, and small experiments. Separate assumptions from evidence. You have no filesystem or execution tools in this chat.",
+    "You are a product partner for a founder. Turn vague ideas into user journeys, acceptance criteria, and small experiments. Separate assumptions from evidence. You may read this project and run read-only git commands to check facts before answering, and you cannot edit anything.",
 };
 function requestFor(provider, model, messages, system, key) {
   if (provider === "anthropic")
@@ -62,12 +64,26 @@ function parseResponse(provider, body) {
   };
 }
 async function complete(
-  { provider, model, messages, role, skill, key, signal },
+  { provider, model, messages, role, skill, key, signal, cwd, tools },
   fetcher = fetch,
+  spawner,
 ) {
   const system =
     (roles[role] || roles.builder) +
     (skill ? `\n\nUser-selected project skill:\n${skill}` : "");
+  if (isCliProvider(provider))
+    return runCli(
+      {
+        provider,
+        model,
+        system,
+        prompt: cliPrompt(messages),
+        cwd,
+        signal,
+        tools,
+      },
+      ...(spawner ? [spawner] : []),
+    );
   const req = requestFor(provider, model, messages, system, key);
   const response = await fetcher(req.url, {
     method: "POST",

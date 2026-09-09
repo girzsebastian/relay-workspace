@@ -145,254 +145,259 @@ export default function AgentBoard({
           queued
         </span>
       </div>
-      <div className="trenches-columns">
-        {[
-          {
-            id: "ready",
-            name: "Ready",
-            hint: "Give an agent its next task",
-            color: "quiet",
-          },
-          {
-            id: "running",
-            name: "Live sessions",
-            hint: "Open the terminal to see progress",
-            color: "green",
-          },
-          {
-            id: "review",
-            name: "Review & recovery",
-            hint: "Flagged, exited, or interrupted",
-            color: "amber",
-          },
-        ].map((column) => {
-          const grouped = agents.filter(
-              (a) =>
-                columnFor(a, sessions.get(a.sessionId || "")) === column.id,
-            ),
-            visible = grouped.filter((a) =>
-              `${a.name} ${a.lastTask || ""} ${a.provider} ${state.projects.find((p) => p.id === a.projectId)?.name}`
-                .toLowerCase()
-                .includes((queries[column.id] || "").toLowerCase()),
-            );
-          return (
-            <section
-              className={`trench-column ${column.color}`}
-              key={column.id}
-              aria-label={column.name}
-            >
-              <header>
-                <div>
-                  <i />
-                  <h2>{column.name}</h2>
-                  <span>{grouped.length}</span>
-                </div>
-                <label>
-                  <Search size={12} />
-                  <input
-                    aria-label={`Search ${column.name}`}
-                    placeholder="Search agents"
-                    value={queries[column.id] || ""}
-                    onChange={(e) =>
-                      setQueries({ ...queries, [column.id]: e.target.value })
-                    }
-                  />
-                </label>
-              </header>
-
-              <div className="trench-list">
-                {visible.map((agent) => {
-                  const session = sessions.get(agent.sessionId || ""),
-                    running = session?.status === "running",
-                    repo = state.projects.find((p) => p.id === agent.projectId),
-                    runs = state.sessions.filter(
-                      (s) => s.agentId === agent.id,
-                    ).length;
-                  return (
-                    <article
-                      className={`trench-card ${running ? "is-running" : ""} provider-${agent.provider}`}
-                      key={agent.id}
-                    >
-                      <div className="trench-card-main">
-                        <div className={`agent-avatar ${agent.provider}`}>
-                          {agent.name
-                            .split(/\s+/)
-                            .slice(0, 2)
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()}
-                          <span>
-                            <Bot size={10} />
-                          </span>
-                        </div>
-                        <div className="trench-card-text">
-                          <div className="trench-name">
-                            <button
-                              className="agent-title-button"
-                              title={`Manage ${agent.name}`}
-                              onClick={() => setDetailId(agent.id)}
-                            >
-                              <h3>{agent.name}</h3>
-                            </button>
-                            <span>{providerNames[agent.provider]}</span>
-                          </div>
-                          <p className="trench-project">
-                            <Folder size={11} />
-                            {repo?.name}
-                          </p>
-                          <p
-                            className="trench-mission"
-                            title={agent.lastTask || agent.instructions}
-                          >
-                            {agent.lastTask || agent.instructions || ""}
-                          </p>
-                        </div>
-                      </div>
-                      {running && (
-                        <div
-                          className="agent-output-activity"
-                          title="Terminal output in the last two minutes"
-                        >
-                          {Array.from({ length: 24 }, (_, i) => {
-                            const bucket =
-                              Math.floor(Date.now() / 5000) * 5000 -
-                              (23 - i) * 5000;
-                            const bytes =
-                              session?.activity?.find((p) => p.at === bucket)
-                                ?.bytes || 0;
-                            return (
-                              <i
-                                key={i}
-                                style={{
-                                  height: `${bytes ? Math.min(100, 20 + Math.log2(bytes + 1) * 5) : 8}%`,
-                                  opacity: bytes ? 0.9 : 0.15,
-                                }}
-                              />
-                            );
-                          })}
-                          <span>
-                            {session?.lastOutputAt
-                              ? `Output ${Math.max(0, Math.floor((Date.now() - session.lastOutputAt) / 1000))}s ago`
-                              : "Waiting for output"}
-                          </span>
-                        </div>
-                      )}
-                      <div className="trench-metrics">
-                        <span>
-                          <Clock3 size={11} />
-                          {elapsed(session)}
-                        </span>
-                        <span>
-                          <TerminalSquare size={11} />
-                          {runs} {runs === 1 ? "run" : "runs"}
-                        </span>
-                        {agent.skillPath && (
-                          <span title={agent.skillPath}>
-                            <FileCode2 size={11} />
-                            Skill attached
-                          </span>
-                        )}
-                        <span
-                          className={`card-state ${running ? "green" : ""}`}
-                        >
-                          {running
-                            ? "Process running"
-                            : session?.status || "Not started"}
-                        </span>
-                      </div>
-                      <div className="trench-actions">
-                        <button
-                          title={`Manage ${agent.name}`}
-                          onClick={() => setDetailId(agent.id)}
-                        >
-                          Details
-                        </button>
-                        {agent.stage === "review" && !running ? (
-                          <button
-                            title="Ready for another task"
-                            onClick={() => mark(agent.id, "ready")}
-                          >
-                            <Check size={12} />
-                            Mark ready
-                          </button>
-                        ) : (
-                          <button
-                            title="Flag for review without stopping"
-                            onClick={() => mark(agent.id, "review")}
-                          >
-                            <CircleHelp size={12} />
-                            Review
-                          </button>
-                        )}
-                        {running && (
-                          <button
-                            title="Stop agent terminal"
-                            onClick={() =>
-                              call("terminal:stop", { id: session!.id }).catch(
-                                onError,
-                              )
-                            }
-                          >
-                            <Square size={11} />
-                            Stop
-                          </button>
-                        )}
-                        {session && (
-                          <button
-                            className={
-                              running ? "card-open primary" : "card-open"
-                            }
-                            onClick={() => onOpen(session)}
-                          >
-                            <ArrowUpRight size={12} />
-                            Open session
-                          </button>
-                        )}
-                        {!running && (
-                          <button
-                            className="card-start"
-                            onClick={() => {
-                              setTaskAgent(agent);
-                              setTask("");
-                            }}
-                          >
-                            <Play size={11} />
-                            New task
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-                {!visible.length && (
-                  <div className="trench-empty">
-                    <Bot size={22} />
-                    <h3>
-                      {queries[column.id]
-                        ? "No matching agents"
-                        : column.id === "ready"
-                          ? "No agents ready"
-                          : column.id === "running"
-                            ? "No live sessions"
-                            : "Nothing waiting for review"}
-                    </h3>
+      <div className="board-layout">
+        <div className="trenches-columns">
+          {[
+            {
+              id: "ready",
+              name: "Ready",
+              hint: "Give an agent its next task",
+              color: "quiet",
+            },
+            {
+              id: "running",
+              name: "Live sessions",
+              hint: "Open the terminal to see progress",
+              color: "green",
+            },
+            {
+              id: "review",
+              name: "Review & recovery",
+              hint: "Flagged, exited, or interrupted",
+              color: "amber",
+            },
+          ].map((column) => {
+            const grouped = agents.filter(
+                (a) =>
+                  columnFor(a, sessions.get(a.sessionId || "")) === column.id,
+              ),
+              visible = grouped.filter((a) =>
+                `${a.name} ${a.lastTask || ""} ${a.provider} ${state.projects.find((p) => p.id === a.projectId)?.name}`
+                  .toLowerCase()
+                  .includes((queries[column.id] || "").toLowerCase()),
+              );
+            return (
+              <section
+                className={`trench-column ${column.color}`}
+                key={column.id}
+                aria-label={column.name}
+              >
+                <header>
+                  <div>
+                    <i />
+                    <h2>{column.name}</h2>
+                    <span>{grouped.length}</span>
                   </div>
-                )}
-              </div>
-            </section>
-          );
-        })}
+                  <label>
+                    <Search size={12} />
+                    <input
+                      aria-label={`Search ${column.name}`}
+                      placeholder="Search agents"
+                      value={queries[column.id] || ""}
+                      onChange={(e) =>
+                        setQueries({ ...queries, [column.id]: e.target.value })
+                      }
+                    />
+                  </label>
+                </header>
+
+                <div className="trench-list">
+                  {visible.map((agent) => {
+                    const session = sessions.get(agent.sessionId || ""),
+                      running = session?.status === "running",
+                      repo = state.projects.find(
+                        (p) => p.id === agent.projectId,
+                      ),
+                      runs = state.sessions.filter(
+                        (s) => s.agentId === agent.id,
+                      ).length;
+                    return (
+                      <article
+                        className={`trench-card ${running ? "is-running" : ""} provider-${agent.provider}`}
+                        key={agent.id}
+                      >
+                        <div className="trench-card-main">
+                          <div className={`agent-avatar ${agent.provider}`}>
+                            {agent.name
+                              .split(/\s+/)
+                              .slice(0, 2)
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()}
+                            <span>
+                              <Bot size={10} />
+                            </span>
+                          </div>
+                          <div className="trench-card-text">
+                            <div className="trench-name">
+                              <button
+                                className="agent-title-button"
+                                title={`Manage ${agent.name}`}
+                                onClick={() => setDetailId(agent.id)}
+                              >
+                                <h3>{agent.name}</h3>
+                              </button>
+                              <span>{providerNames[agent.provider]}</span>
+                            </div>
+                            <p className="trench-project">
+                              <Folder size={11} />
+                              {repo?.name}
+                            </p>
+                            <p
+                              className="trench-mission"
+                              title={agent.lastTask || agent.instructions}
+                            >
+                              {agent.lastTask || agent.instructions || ""}
+                            </p>
+                          </div>
+                        </div>
+                        {running && (
+                          <div
+                            className="agent-output-activity"
+                            title="Terminal output in the last two minutes"
+                          >
+                            {Array.from({ length: 24 }, (_, i) => {
+                              const bucket =
+                                Math.floor(Date.now() / 5000) * 5000 -
+                                (23 - i) * 5000;
+                              const bytes =
+                                session?.activity?.find((p) => p.at === bucket)
+                                  ?.bytes || 0;
+                              return (
+                                <i
+                                  key={i}
+                                  style={{
+                                    height: `${bytes ? Math.min(100, 20 + Math.log2(bytes + 1) * 5) : 8}%`,
+                                    opacity: bytes ? 0.9 : 0.15,
+                                  }}
+                                />
+                              );
+                            })}
+                            <span>
+                              {session?.lastOutputAt
+                                ? `Output ${Math.max(0, Math.floor((Date.now() - session.lastOutputAt) / 1000))}s ago`
+                                : "Waiting for output"}
+                            </span>
+                          </div>
+                        )}
+                        <div className="trench-metrics">
+                          <span>
+                            <Clock3 size={11} />
+                            {elapsed(session)}
+                          </span>
+                          <span>
+                            <TerminalSquare size={11} />
+                            {runs} {runs === 1 ? "run" : "runs"}
+                          </span>
+                          {agent.skillPath && (
+                            <span title={agent.skillPath}>
+                              <FileCode2 size={11} />
+                              Skill attached
+                            </span>
+                          )}
+                          <span
+                            className={`card-state ${running ? "green" : ""}`}
+                          >
+                            {running
+                              ? "Process running"
+                              : session?.status || "Not started"}
+                          </span>
+                        </div>
+                        <div className="trench-actions">
+                          <button
+                            title={`Manage ${agent.name}`}
+                            onClick={() => setDetailId(agent.id)}
+                          >
+                            Details
+                          </button>
+                          {agent.stage === "review" && !running ? (
+                            <button
+                              title="Ready for another task"
+                              onClick={() => mark(agent.id, "ready")}
+                            >
+                              <Check size={12} />
+                              Mark ready
+                            </button>
+                          ) : (
+                            <button
+                              title="Flag for review without stopping"
+                              onClick={() => mark(agent.id, "review")}
+                            >
+                              <CircleHelp size={12} />
+                              Review
+                            </button>
+                          )}
+                          {running && (
+                            <button
+                              title="Stop agent terminal"
+                              onClick={() =>
+                                call("terminal:stop", {
+                                  id: session!.id,
+                                }).catch(onError)
+                              }
+                            >
+                              <Square size={11} />
+                              Stop
+                            </button>
+                          )}
+                          {session && (
+                            <button
+                              className={
+                                running ? "card-open primary" : "card-open"
+                              }
+                              onClick={() => onOpen(session)}
+                            >
+                              <ArrowUpRight size={12} />
+                              Open session
+                            </button>
+                          )}
+                          {!running && (
+                            <button
+                              className="card-start"
+                              onClick={() => {
+                                setTaskAgent(agent);
+                                setTask("");
+                              }}
+                            >
+                              <Play size={11} />
+                              New task
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {!visible.length && (
+                    <div className="trench-empty">
+                      <Bot size={22} />
+                      <h3>
+                        {queries[column.id]
+                          ? "No matching agents"
+                          : column.id === "ready"
+                            ? "No agents ready"
+                            : column.id === "running"
+                              ? "No live sessions"
+                              : "Nothing waiting for review"}
+                      </h3>
+                    </div>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+        {detailId && state.agents.find((a) => a.id === detailId) && (
+          <AgentDetails
+            key={detailId}
+            docked
+            agent={state.agents.find((a) => a.id === detailId)!}
+            state={state}
+            onClose={() => setDetailId(null)}
+            onOpen={onOpen}
+            onError={onError}
+          />
+        )}
       </div>
-      {detailId && state.agents.find((a) => a.id === detailId) && (
-        <AgentDetails
-          key={detailId}
-          agent={state.agents.find((a) => a.id === detailId)!}
-          state={state}
-          onClose={() => setDetailId(null)}
-          onOpen={onOpen}
-          onError={onError}
-        />
-      )}
       {create && (
         <div className="modal-backdrop">
           <form

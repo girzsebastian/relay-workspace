@@ -7,7 +7,42 @@ export type View =
   | "settings"
   | "board"
   | "terminal-grid";
-export type Provider = "openai" | "anthropic";
+export type SidebarPanel =
+  "explorer" | "search" | "source-control" | "containers";
+export type GitFile = {
+  path: string;
+  from?: string;
+  index: string;
+  worktree: string;
+  added?: number | null;
+  removed?: number | null;
+  untracked: boolean;
+  staged: boolean;
+};
+export type GitStatus = {
+  repository: boolean;
+  prefix?: string;
+  branch?: string | null;
+  upstream?: string | null;
+  ahead: number;
+  behind: number;
+  files: GitFile[];
+  skippedUntracked?: string[];
+};
+export type RepoStatus = GitStatus & {
+  path: string;
+  relative: string;
+  name: string;
+  error?: string;
+};
+export type GitCommit = {
+  sha: string;
+  author: string;
+  at: number;
+  subject: string;
+};
+export type Provider =
+  "openai" | "anthropic" | "claude-cli" | "codex-cli" | "opencode-cli";
 export type Role = "builder" | "architect" | "reviewer" | "product";
 export type Draft = {
   path: string;
@@ -45,9 +80,18 @@ export type Session = {
   recoveredFrom?: string;
   agentId?: string;
   lastOutputAt?: number;
+  dismissedAt?: number;
+  agentOwned?: boolean;
+  task?: string;
+  instructions?: string;
+  snapshot?: { relative: string; head: string | null; dirty: string[] }[];
+  historyLost?: boolean;
   activity?: { at: number; bytes: number }[];
 };
 export type AgentTask = {
+  hop?: number;
+  fromAgentId?: string;
+  summary?: string;
   id: string;
   agentId: string;
   text: string;
@@ -74,6 +118,7 @@ export type Agent = {
   name: string;
   projectId: string;
   provider: "codex" | "claude" | "opencode";
+  model?: string;
   instructions: string;
   skillPath?: string;
   createdAt: number;
@@ -96,6 +141,7 @@ export type Preferences = {
   editorSessionIds: (string | null)[];
   gridScope: string;
   showExplorer: boolean;
+  sidebarPanel: SidebarPanel;
   showChat: boolean;
   showTerminal: boolean;
   splitEditor: boolean;
@@ -113,6 +159,7 @@ export const defaultPreferences: Preferences = {
   editorSessionIds: [],
   gridScope: "all",
   showExplorer: true,
+  sidebarPanel: "explorer",
   showChat: true,
   showTerminal: true,
   splitEditor: false,
@@ -121,7 +168,32 @@ export const defaultPreferences: Preferences = {
   terminalHeight: 260,
   editorSplit: 50,
 };
+export type Approval = {
+  id: string;
+  runId?: string;
+  projectId?: string;
+  chatId?: string;
+  agentId?: string;
+  tool: string;
+  input?: unknown;
+  reason?: string;
+  canRemember?: boolean;
+  status: string;
+  createdAt: number;
+};
+export type ChatStep = {
+  kind: "text" | "tool" | "result";
+  id?: string;
+  name?: string;
+  input?: unknown;
+  output?: string;
+  error?: boolean;
+  done?: boolean;
+  text?: string;
+};
+export type ChatMode = "agent" | "plan" | "ask";
 export type Chat = {
+  mode?: ChatMode;
   id: string;
   projectId: string;
   title: string;
@@ -136,6 +208,8 @@ export type Chat = {
     role: "user" | "assistant";
     content: string;
     createdAt: number;
+    steps?: ChatStep[];
+    durationMs?: number;
   }[];
 };
 export type Usage = {
@@ -156,10 +230,16 @@ export type State = {
   projects: Project[];
   sessions: Session[];
   chats: Chat[];
+  approvals?: Approval[];
   usage: Usage[];
   agents: Agent[];
   tasks: AgentTask[];
-  settings: { provider: Provider; models: Record<Provider, string> };
+  settings: {
+    runMode?: "allowlist" | "auto-review" | "everything";
+    allowlist?: string[];
+    provider: Provider;
+    models: Partial<Record<Provider, string>>;
+  };
   ui: Partial<Preferences> & {
     view: View;
     projectId: string | null;
