@@ -320,8 +320,8 @@ body,
 .explorer-root {
   display: flex;
   align-items: center;
-  gap: 5px;
-  min-height: 25px;
+  gap: 4px;
+  min-height: 22px;
   padding: 0 8px;
   text-transform: uppercase;
   text-align: left;
@@ -330,17 +330,19 @@ body,
 }
 .file-list {
   overflow: auto;
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   flex: 1;
   min-height: 0;
 }
 .file-entry {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
   padding: 0 8px;
   width: 100%;
-  height: 25px;
+  /* Tight rows, the way a file tree is meant to read: the list is scanned far
+     more often than it is clicked, so more of it on screen wins. */
+  height: 21px;
   border-radius: 0;
   text-align: left;
   font-size: 12px;
@@ -359,7 +361,7 @@ body,
   color: var(--muted);
 }
 .tree-indent {
-  width: 10px;
+  width: 9px;
   flex-shrink: 0;
 }
 .tree-note {
@@ -1337,7 +1339,7 @@ body,
   background: var(--raised);
 }
 .file-entry .tree-indent {
-  flex: 0 0 10px;
+  flex: 0 0 9px;
 }
 .terminal-deck {
   position: relative;
