@@ -25,11 +25,11 @@ jobs:
       - run: npm run test:desktop
         timeout-minutes: 4
       - run: npm run pack
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: relay-${{ matrix.os }}-unsigned
           path: release/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots-${{ matrix.os }}
