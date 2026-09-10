@@ -1,4 +1,4 @@
-# Relay handoff for Claude Code
+# Handoff notes
 
 Updated: 2026-09-08
 
@@ -8,7 +8,7 @@ Read this file first when continuing work in the Relay repository. It is a hando
 
 Suggested first instruction:
 
-> Read `CLAUDE_HANDOFF.md`, inspect the current repository and git status, then continue from the current state. Do not undo existing work without explaining why.
+> Read `docs/HANDOFF.md`, inspect the current repository and git status, then continue from the current state. Do not undo existing work without explaining why.
 
 ## Product
 
@@ -26,7 +26,13 @@ This is a local desktop alpha, not yet a hosted SaaS. It does not currently prov
 
 ## Current release
 
-Published prerelease: [Relay 0.3.1](https://github.com/girzsebastian/relay-workspace/releases/tag/v0.3.1)
+Published prerelease: [Relay 0.4.0](https://github.com/girzsebastian/relay-workspace/releases/tag/v0.4.0)
+
+0.4.0 adds chat and agents on an installed CLI subscription, an agent chat
+that streams its steps and can run real commands, approval cards, source
+control across every repository in a workspace, search, containers, a
+side-by-side diff with per-hunk undo, and a recovery view after a crash. The
+full account of what was asked for and what remains is in `docs/REQUESTS.md`.
 
 Repository: `https://github.com/girzsebastian/relay-workspace`
 
@@ -94,7 +100,9 @@ The Electron main process owns PTYs, so hiding a pane does not kill its terminal
 
 ### Usage and builds
 
-Relay records provider-reported API token fields when available and tracks explicit build command wall time. CLI subscription token usage remains unavailable; terminal output is not scraped as billing data. The status bar intentionally shows unknown CLI usage rather than fabricated numbers.
+Relay records provider-reported API token fields when available and tracks explicit build command wall time. Terminal output is never scraped as billing data, and the status bar shows unknown CLI usage rather than fabricated numbers.
+
+One correction to earlier notes: CLI token usage is not universally unavailable. A CLI-backed chat runs the tool non-interactively, and all three CLIs report real token counts in that mode, so those rows are measured and stored with `source: "provider-cli"`. What remains unmeasured is an _interactive_ PTY session, where no usage is emitted.
 
 ## Rakazo reference
 
@@ -136,6 +144,20 @@ npm run dist:win
 ```
 
 The provider CLIs are installed and authenticated separately. Relay launches the installed official CLI tools and does not convert a Codex, Claude, Cursor, or OpenCode subscription into interchangeable API credits.
+
+### Chat provider selection (branch `feature/cli-provider-chat`)
+
+Chat is no longer API-only. `settings.provider` accepts `claude-cli`, `codex-cli`, and `opencode-cli` alongside `openai` and `anthropic`. CLI providers require no API key and no model ID; they require only that the executable is on PATH, which `capabilities` already reports.
+
+Commands are built in `desktop/cli-chat.cjs` and were verified against the installed CLIs (Claude Code 2.1.263, codex-cli 0.153.4, OpenCode 1.18.29):
+
+- `claude -p <prompt> --output-format json --tools ""` — `--tools ""` disables every built-in tool.
+- `codex exec --json --sandbox read-only --skip-git-repo-check <prompt>` — JSONL events; the reply is the last `item.completed` of type `agent_message`.
+- `opencode run --format json --agent plan <prompt>` — the `plan` agent is read-only.
+
+Each turn sends the full stored transcript, exactly as the HTTP path already does, so Relay's stored messages stay the single source of truth and a chat cannot drift from session state held inside a CLI.
+
+Still open on this branch: worktree isolation and agent-to-agent handoff, both listed below. Handoff should not land before isolation, because two CLI agents writing the same project folder will corrupt each other's work.
 
 ## Next recommended work
 

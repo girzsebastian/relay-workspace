@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/girzsebastian/relay-workspace/security/advisories/new
+    about: Report privately instead of opening an issue. See SECURITY.md.
+  - name: What is still owed
+    url: https://github.com/girzsebastian/relay-workspace/issues/1
+    about: The backlog issue lists what is planned and what is not started.

@@ -3,6 +3,11 @@ const path = require("node:path");
 const fs = require("node:fs");
 const crypto = require("node:crypto");
 const { registerSession, recordTaskExit } = require("./agent-state.cjs");
+const {
+  providerSessionExists,
+  readableTail,
+  recoveredContext,
+} = require("./provider-sessions.cjs");
 
 function environment() {
   const env = { ...process.env, TERM: "xterm-256color" };
@@ -71,6 +76,7 @@ function launchSpec(kind, options = {}, platform = process.platform) {
         : [
             "--session-id",
             options.providerSessionId,
+            ...(options.model ? ["--model", options.model] : []),
             ...(options.instructions
               ? ["--append-system-prompt", options.instructions]
               : []),
@@ -87,6 +93,7 @@ function launchSpec(kind, options = {}, platform = process.platform) {
           ]
         : options.task
           ? [
+              ...(options.model ? ["-m", options.model] : []),
               [options.instructions, options.task]
                 .filter(Boolean)
                 .join("\n\nTask:\n"),
@@ -104,6 +111,7 @@ function launchSpec(kind, options = {}, platform = process.platform) {
         ? ["--session", options.providerSessionId]
         : options.task
           ? [
+              ...(options.model ? ["-m", options.model] : []),
               "--prompt",
               [options.instructions, options.task]
                 .filter(Boolean)
@@ -120,6 +128,7 @@ class Terminals {
     this.publish = publish;
     this.pty = pty;
     this.resolveExecutable = options.resolveExecutable || executable;
+    this.sessionExists = options.sessionExists || providerSessionExists;
     this.running = new Map();
     this.heartbeat = setInterval(() => {
       if (this.running.size) {
@@ -257,14 +266,51 @@ class Terminals {
       (t) =>
         t.id === old.taskId && ["review", "interrupted"].includes(t.status),
     );
+    const coding = ["codex", "claude", "opencode"].includes(old.kind);
+    // Resuming a session the CLI never wrote fails inside the PTY. When the
+    // history is gone, start a fresh one carrying the context Relay did keep.
+    const resumable =
+      coding && this.sessionExists(old.kind, old.providerSessionId);
     return this.start(old.projectId, old.kind, {
       ...(task ? { taskId: task.id } : {}),
       command: old.command,
-      providerSessionId: old.providerSessionId,
-      recover: ["codex", "claude", "opencode"].includes(old.kind),
+      ...(resumable ? { providerSessionId: old.providerSessionId } : {}),
+      recover: resumable,
       recoveredFrom: id,
+      ...(coding && !resumable
+        ? {
+            historyLost: true,
+            instructions: this.recoveredInstructions(old, task),
+            ...(task?.text ? { task: task.text } : {}),
+          }
+        : {}),
       ...(old.agentId ? { agentId: old.agentId, title: old.title } : {}),
     });
+  }
+  recoveredInstructions(session, task) {
+    const agent = this.store.data.agents?.find((a) => a.id === session.agentId);
+    let log = "";
+    try {
+      log = readableTail(this.store.readLog(session.id));
+    } catch {
+      // A missing or unreadable log only means less context, not a failure.
+    }
+    return recoveredContext({
+      agent,
+      task: task?.text || session.task,
+      log,
+    });
+  }
+  dismiss(id) {
+    const session = this.store.session(id);
+    if (this.running.has(id))
+      throw new Error(
+        "Stop this terminal before removing it from the session list.",
+      );
+    session.dismissedAt = Date.now();
+    this.store.save();
+    this.publish("changed");
+    return session;
   }
   write(id, data) {
     const p = this.running.get(id);

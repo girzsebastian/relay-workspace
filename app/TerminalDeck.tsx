@@ -13,16 +13,17 @@ import {
   X,
 } from "lucide-react";
 import Terminal from "./Terminal";
+import SessionPicker, { providerNames } from "./SessionPicker";
 import ResizeHandle from "./ResizeHandle";
-import { call, type Project, type Session, type TerminalSizing } from "./types";
+import {
+  call,
+  type Agent,
+  type Project,
+  type Session,
+  type TerminalSizing,
+} from "./types";
 
-export const providerNames: Record<string, string> = {
-  shell: "Shell",
-  codex: "Codex",
-  claude: "Claude Code",
-  opencode: "OpenCode",
-  build: "Build",
-};
+export { providerNames };
 export function recoveryNote(session: Session) {
   if (session.kind === "shell")
     return "Recover opens a new shell in this project. Saved output stays here.";
@@ -40,10 +41,6 @@ export function initialPaneIds(
   pinned: (string | null)[],
   preferred?: string,
 ) {
-  if (pinned.length)
-    return Array.from({ length: count }, (_, i) =>
-      sessions.some((s) => s.id === pinned[i]) ? pinned[i] : null,
-    );
   const ordered = sessions
     .slice()
     .sort(
@@ -52,11 +49,28 @@ export function initialPaneIds(
         Number(b.status === "running") - Number(a.status === "running") ||
         b.startedAt - a.startedAt,
     );
-  return Array.from({ length: count }, (_, i) => ordered[i]?.id || null);
+  const slots: (string | null)[] = Array.from({ length: count }, (_, i) =>
+    sessions.some((s) => s.id === pinned[i]) ? pinned[i] : null,
+  );
+  // A slot the user emptied stays empty; one that was never decided, or whose
+  // session is gone, is refilled so growing the layout cannot show blank panes.
+  const hidden = (slot: number) =>
+    slot < pinned.length && pinned[slot] === null;
+  const used = new Set(slots.filter(Boolean));
+  let next = 0;
+  for (let slot = 0; slot < count; slot += 1) {
+    if (slots[slot] || hidden(slot)) continue;
+    while (next < ordered.length && used.has(ordered[next].id)) next += 1;
+    if (next >= ordered.length) break;
+    slots[slot] = ordered[next].id;
+    used.add(ordered[next].id);
+  }
+  return slots;
 }
 export default function TerminalDeck({
   sessions,
   projects,
+  agents,
   count,
   pinned,
   onPins,
@@ -70,6 +84,7 @@ export default function TerminalDeck({
   onSizing: (sizing: TerminalSizing) => void;
   sessions: Session[];
   projects: Project[];
+  agents?: Agent[];
   count: number;
   pinned: (string | null)[];
   preferred?: string;
@@ -143,22 +158,18 @@ export default function TerminalDeck({
             >
               <header className="tile-header">
                 <span className={`provider-dot ${session?.kind || "shell"}`} />
-                <select
-                  aria-label={`Session in pane ${slot + 1}`}
-                  value={id || ""}
-                  onChange={(e) => setPin(slot, e.target.value || null)}
-                >
-                  <option value="">Choose a session…</option>
-                  {sessions
+                <SessionPicker
+                  label={`Session in pane ${slot + 1}`}
+                  value={id}
+                  sessions={sessions
                     .filter((s) => s.id === id || !ids.includes(s.id))
                     .slice()
-                    .reverse()
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.title} · {providerNames[s.kind]}
-                      </option>
-                    ))}
-                </select>
+                    .reverse()}
+                  projects={projects}
+                  agents={agents}
+                  onChange={(next) => setPin(slot, next)}
+                  onError={onError}
+                />
                 <div className="tile-actions">
                   {session && (
                     <>
@@ -224,6 +235,11 @@ export default function TerminalDeck({
               </header>
               {session ? (
                 <>
+                  {session.agentOwned && (
+                    <div className="agent-terminal-note">
+                      Agent terminal · read-only
+                    </div>
+                  )}
                   <div className="tile-meta">
                     <span title={project?.path}>
                       {project?.name}{" "}

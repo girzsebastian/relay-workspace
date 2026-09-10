@@ -25,9 +25,9 @@ import {
   Plug,
   Plus,
   RefreshCw,
+  Search,
   RotateCcw,
   Save,
-  Search,
   Send,
   Settings2,
   ShieldCheck,
@@ -56,7 +56,25 @@ import {
   type View,
   type Preferences,
   defaultPreferences,
+  type ChatMode,
+  type Usage,
 } from "./types";
+import {
+  apiProviderLabels,
+  cliInstalled,
+  cliProviders,
+  isCliProvider,
+  providerBlockedReason,
+  providerLabel,
+  providerReady,
+} from "./providers";
+import SettingsView from "./SettingsView";
+import ChatSteps from "./ChatSteps";
+import Markdown from "./Markdown";
+import ApprovalCard from "./ApprovalCard";
+import ChatMessage from "./ChatMessage";
+import ChatChanges from "./ChatChanges";
+import RecoveryPanel from "./RecoveryPanel";
 import Editor from "./Editor";
 import TerminalDeck, { LayoutButtons } from "./TerminalDeck";
 import AgentBoard from "./AgentBoard";
@@ -193,7 +211,8 @@ export default function App() {
     [chatId, setChatId] = useState<string | null>(null);
   const [toast, setToast] = useState(""),
     [search, setSearch] = useState(""),
-    [role, setRole] = useState<Role>("builder");
+    [role, setRole] = useState<Role>("builder"),
+    [chatMode, setChatMode] = useState<ChatMode>("agent");
   const [composer, setComposer] = useState(""),
     [modal, setModal] = useState<"build" | "bind" | null>(null),
     [command, setCommand] = useState("");
@@ -280,13 +299,56 @@ export default function App() {
     }
   }, [projectId, showError]);
   const project = state.projects.find((p) => p.id === projectId);
-  const projectSessions = state.sessions.filter(
-    (s) => s.projectId === projectId,
+  const chatScroll = useRef<HTMLDivElement>(null);
+  const [atChatBottom, setAtChatBottom] = useState(true);
+  const [unseenReplies, setUnseenReplies] = useState(0);
+  const [openRequest, setOpenRequest] = useState<{
+    path: string;
+    token: number;
+  } | null>(null);
+  // Clicking a file the agent changed opens it in the editor beside the chat,
+  // the same as clicking one in source control.
+  const openInEditor = (path: string) =>
+    setOpenRequest({ path, token: Date.now() });
+  const pendingApprovals = (state.approvals || []).filter(
+    (a) => a.status === "pending" && (!chatId || a.chatId === chatId),
   );
+  const projectSessions = state.sessions.filter(
+    (s) => s.projectId === projectId && !s.dismissedAt,
+  );
+  const terminalTabs = projectSessions.filter((s) => s.kind !== "build");
   const projectChats = state.chats.filter((c) => c.projectId === projectId);
   const selectedSession =
     projectSessions.find((s) => s.id === sessionId) || projectSessions.at(-1);
   const selectedChat = projectChats.find((c) => c.id === chatId);
+  const chatSignal = [
+    selectedChat?.id,
+    selectedChat?.messages.length,
+    selectedChat?.messages.at(-1)?.content?.length,
+    selectedChat?.status,
+    selectedChat?.error,
+    pendingApprovals.length,
+  ].join("|");
+  useEffect(() => {
+    const box = chatScroll.current;
+    if (!box) return;
+    if (atChatBottom) {
+      box.scrollTop = box.scrollHeight;
+      setUnseenReplies(0);
+    } else setUnseenReplies((n) => n + 1);
+    // atChatBottom is read, not followed: reacting to it would scroll on a
+    // plain scroll gesture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatSignal]);
+  // Opening a conversation should land on its last message, not its first.
+  useEffect(() => {
+    const box = chatScroll.current;
+    if (!box) return;
+    box.scrollTop = box.scrollHeight;
+    setAtChatBottom(true);
+    setUnseenReplies(0);
+  }, [selectedChat?.id, view]);
+
   const running = state.sessions.filter((s) => s.status === "running");
   const interrupted = state.sessions.filter(
     (s) =>
@@ -294,16 +356,13 @@ export default function App() {
       !state.sessions.some((n) => n.recoveredFrom === s.id),
   );
   const measured = state.usage.filter((u) => u.measured);
-  const totalTokens = measured.reduce(
-    (sum, u) =>
-      sum +
-      (u.input || 0) +
-      (u.output || 0) +
-      (u.provider === "anthropic"
-        ? (u.cacheRead || 0) + (u.cacheWrite || 0)
-        : 0),
-    0,
-  );
+  const tokensOf = (u: Usage) =>
+    (u.input || 0) +
+    (u.output || 0) +
+    (u.provider === "anthropic" || u.provider === "claude-cli"
+      ? (u.cacheRead || 0) + (u.cacheWrite || 0)
+      : 0);
+  const totalTokens = measured.reduce((sum, u) => sum + tokensOf(u), 0);
   const addProject = async () => {
     try {
       const p = await call<Project | null>("project:add");
@@ -366,10 +425,11 @@ export default function App() {
       let chat = selectedChat;
       if (!chat) {
         const provider = state.settings.provider,
-          model = state.settings.models[provider];
-        if (!model || !state.capabilities.configured.includes(provider)) {
+          model = state.settings.models[provider] || "";
+        if (!providerReady(state, provider)) {
           setToast(
-            "Set your API provider, model ID, and key in Settings first.",
+            providerBlockedReason(state, provider) ||
+              "Choose a chat provider in Settings first.",
           );
           setView("settings");
           return;
@@ -379,6 +439,7 @@ export default function App() {
           provider,
           model,
           role,
+          mode: chatMode,
           ...(skillPath ? { skillPath } : {}),
         });
         setChatId(chat.id);
@@ -440,18 +501,15 @@ export default function App() {
         new CustomEvent("relay-command", { detail: command }),
       );
   };
-  const projectTokens = measured
-    .filter((u) => u.projectId === projectId)
-    .reduce(
-      (n, u) =>
-        n +
-        (u.input || 0) +
-        (u.output || 0) +
-        (u.provider === "anthropic"
-          ? (u.cacheRead || 0) + (u.cacheWrite || 0)
-          : 0),
-      0,
-    );
+  const projectUsage = measured.filter((u) => u.projectId === projectId);
+  const projectTokens = projectUsage
+    .filter((u) => u.source !== "provider-cli")
+    .reduce((n, u) => n + tokensOf(u), 0);
+  // CLI runs report their own token counts, so the bar no longer says they
+  // cannot be known.
+  const projectCliTokens = projectUsage
+    .filter((u) => u.source === "provider-cli")
+    .reduce((n, u) => n + tokensOf(u), 0);
   return (
     <div
       className="app-shell"
@@ -487,7 +545,7 @@ export default function App() {
       <div className="main-shell">
         <header className="ide-titlebar">
           <div className="project-switch">
-            <button title="Open project" onClick={addProject}>
+            <button title="Add workspace" onClick={addProject}>
               <FolderOpen size={16} />
             </button>
             <select
@@ -535,45 +593,52 @@ export default function App() {
             ))}
           </div>
           <div className="layout-controls">
-            {(
-              [
-                { key: "showExplorer", title: "Toggle explorer", icon: Folder },
-                {
-                  key: "showTerminal",
-                  title: "Toggle terminal panel",
-                  icon: TerminalSquare,
-                },
-                {
-                  key: "showChat",
-                  title: "Toggle chat panel",
-                  icon: MessageSquare,
-                },
-                {
-                  key: "splitEditor",
-                  title: "Split editor",
-                  icon: PanelsTopLeft,
-                },
-              ] as const
-            ).map((control) => (
+            {view === "workspace" &&
+              (
+                [
+                  {
+                    key: "showExplorer",
+                    title: "Toggle explorer",
+                    icon: Folder,
+                  },
+                  {
+                    key: "showTerminal",
+                    title: "Toggle terminal panel",
+                    icon: TerminalSquare,
+                  },
+                  {
+                    key: "showChat",
+                    title: "Toggle chat panel",
+                    icon: MessageSquare,
+                  },
+                  {
+                    key: "splitEditor",
+                    title: "Split editor",
+                    icon: PanelsTopLeft,
+                  },
+                ] as const
+              ).map((control) => (
+                <button
+                  key={control.key}
+                  title={control.title}
+                  aria-pressed={preferences[control.key]}
+                  onClick={() =>
+                    updatePreferences({
+                      [control.key]: !preferences[control.key],
+                    })
+                  }
+                >
+                  <control.icon size={15} />
+                </button>
+              ))}
+            {view === "workspace" && (
               <button
-                key={control.key}
-                title={control.title}
-                aria-pressed={preferences[control.key]}
-                onClick={() =>
-                  updatePreferences({
-                    [control.key]: !preferences[control.key],
-                  })
-                }
+                title="Reset layout"
+                onClick={() => commandHandler.current("reset-layout")}
               >
-                <control.icon size={15} />
+                <RotateCcw size={14} />
               </button>
-            ))}
-            <button
-              title="Reset layout"
-              onClick={() => commandHandler.current("reset-layout")}
-            >
-              <RotateCcw size={14} />
-            </button>
+            )}
             <button
               title="Toggle light / dark theme"
               onClick={() => commandHandler.current("theme")}
@@ -586,6 +651,7 @@ export default function App() {
             </button>
           </div>
         </header>
+        <RecoveryPanel onOpen={openGrid} onError={showError} />
         <main
           className={
             (view === "workspace" && project) ||
@@ -647,14 +713,16 @@ export default function App() {
                 }
                 sessions={state.sessions.filter(
                   (s) =>
-                    preferences.gridScope === "all" ||
-                    s.projectId === preferences.gridScope,
+                    !s.dismissedAt &&
+                    (preferences.gridScope === "all" ||
+                      s.projectId === preferences.gridScope),
                 )}
                 projects={state.projects.filter(
                   (p) =>
                     preferences.gridScope === "all" ||
                     p.id === preferences.gridScope,
                 )}
+                agents={state.agents}
                 count={preferences.terminalLayout}
                 pinned={preferences.gridSessionIds}
                 onPins={(ids) => updatePreferences({ gridSessionIds: ids })}
@@ -677,7 +745,7 @@ export default function App() {
                 </div>
                 <button className="button primary" onClick={addProject}>
                   <Plus size={16} />
-                  Open project
+                  Add workspace
                 </button>
               </div>
               <div className="stats-grid">
@@ -893,76 +961,11 @@ export default function App() {
                 </p>
                 <button className="button primary" onClick={addProject}>
                   <FolderOpen size={16} />
-                  Open project
+                  Add workspace
                 </button>
               </Empty>
             ) : (
               <>
-                <div className="workbench-toolbar">
-                  <div>
-                    <span className="folder-tile small">
-                      <Folder size={18} />
-                    </span>
-                    <b>{project.name}</b>
-                    <span className="muted">Local project</span>
-                  </div>
-                  <div>
-                    <button
-                      className="button compact"
-                      onClick={() => startTerminal("codex")}
-                    >
-                      <Cpu size={14} />
-                      Codex
-                    </button>
-                    <button
-                      className="button compact"
-                      onClick={() => startTerminal("claude")}
-                    >
-                      <Sparkles size={14} />
-                      Claude Code
-                    </button>
-                    <button
-                      className="button compact"
-                      onClick={() => startTerminal("shell")}
-                    >
-                      <TerminalSquare size={14} />
-                      Terminal
-                    </button>
-                    <button
-                      className="button compact"
-                      onClick={() => startTerminal("opencode")}
-                    >
-                      <Braces size={14} />
-                      OpenCode
-                    </button>
-                    <select
-                      className="external-editor-select"
-                      aria-label="Open project in external editor"
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value)
-                          call("project:open-editor", {
-                            projectId,
-                            editor: e.target.value,
-                          }).catch(showError);
-                      }}
-                    >
-                      <option value="">Open in…</option>
-                      <option value="cursor">Cursor</option>
-                      <option value="code">VS Code</option>
-                    </select>
-                    <button
-                      className="button primary compact"
-                      onClick={() => {
-                        setCommand("npm run build");
-                        setModal("build");
-                      }}
-                    >
-                      <Play size={13} />
-                      Run build
-                    </button>
-                  </div>
-                </div>
                 <div
                   className={`workbench ${preferences.showChat ? "" : "chat-hidden"} ${preferences.showTerminal ? "" : "terminal-hidden"}`}
                   style={
@@ -975,6 +978,8 @@ export default function App() {
                   <EditorWorkspace
                     key={project.id}
                     project={project}
+                    projects={state.projects}
+                    openRequest={openRequest}
                     onError={showError}
                     preferences={preferences}
                     onPreferences={updatePreferences}
@@ -1056,7 +1061,28 @@ export default function App() {
                             </select>
                           )}
                         </div>
-                        <div className="chat-messages">
+                        {selectedChat && (
+                          <ChatChanges
+                            projectId={projectId || ""}
+                            messages={selectedChat.messages}
+                            onOpenFile={openInEditor}
+                            onError={showError}
+                          />
+                        )}
+                        <div
+                          className="chat-messages"
+                          ref={chatScroll}
+                          onScroll={(e) => {
+                            const box = e.currentTarget;
+                            const bottom =
+                              box.scrollHeight -
+                                box.scrollTop -
+                                box.clientHeight <
+                              40;
+                            setAtChatBottom(bottom);
+                            if (bottom) setUnseenReplies(0);
+                          }}
+                        >
                           {!selectedChat?.messages.length ? (
                             <div className="chat-welcome">
                               <h3>New conversation</h3>
@@ -1083,40 +1109,80 @@ export default function App() {
                             </div>
                           ) : (
                             selectedChat.messages.map((m) => (
-                              <div
+                              <ChatMessage
                                 key={m.id}
-                                className={`chat-message ${m.role}`}
-                              >
-                                <div className="message-author">
-                                  {m.role === "user" ? (
-                                    <span className="tiny-avatar">Y</span>
-                                  ) : (
-                                    <Bot size={15} />
-                                  )}
-                                  <b>
-                                    {m.role === "user"
-                                      ? "You"
-                                      : roleInfo.find(
-                                          (r) => r.id === selectedChat.role,
-                                        )?.name}
-                                  </b>
-                                </div>
-                                <div className="message-text">{m.content}</div>
-                              </div>
+                                message={m}
+                                chat={selectedChat}
+                                projectId={projectId || ""}
+                                roleName={
+                                  roleInfo.find(
+                                    (r) => r.id === selectedChat.role,
+                                  )?.name
+                                }
+                                running={
+                                  selectedChat.status === "running" &&
+                                  m ===
+                                    selectedChat.messages[
+                                      selectedChat.messages.length - 1
+                                    ]
+                                }
+                                onOpenFile={openInEditor}
+                                onError={showError}
+                              />
                             ))
                           )}
-                          {selectedChat?.status === "running" && (
-                            <div className="thinking">
-                              <span className="live-dot" />
-                              Thinking…
-                            </div>
-                          )}
+                          {pendingApprovals.map((approval) => (
+                            <ApprovalCard
+                              key={approval.id}
+                              approval={approval}
+                              onError={showError}
+                            />
+                          ))}
+                          {selectedChat?.status === "running" &&
+                            !pendingApprovals.length && (
+                              <div className="thinking">
+                                <span className="live-dot" />
+                                Thinking…
+                              </div>
+                            )}
                           {selectedChat?.error && (
                             <div className="inline-error">
                               {selectedChat.error}
                             </div>
                           )}
                         </div>
+                        {(!atChatBottom || unseenReplies > 0) && (
+                          <button
+                            className="chat-jump"
+                            title={
+                              pendingApprovals.length
+                                ? "An action is waiting for your approval"
+                                : selectedChat?.error
+                                  ? "The last reply ended with an error"
+                                  : "Jump to the latest message"
+                            }
+                            onClick={() => {
+                              const box = chatScroll.current;
+                              if (!box) return;
+                              box.scrollTop = box.scrollHeight;
+                              setAtChatBottom(true);
+                              setUnseenReplies(0);
+                            }}
+                          >
+                            <ChevronDown size={14} />
+                            {(pendingApprovals.length || unseenReplies) > 0 && (
+                              <span
+                                className={
+                                  pendingApprovals.length || selectedChat?.error
+                                    ? "chat-jump-badge attention"
+                                    : "chat-jump-badge"
+                                }
+                              >
+                                {pendingApprovals.length || unseenReplies}
+                              </span>
+                            )}
+                          </button>
+                        )}
                         <div className="composer-area">
                           <div className="composer">
                             <textarea
@@ -1125,23 +1191,147 @@ export default function App() {
                               value={composer}
                               onChange={(e) => setComposer(e.target.value)}
                               onKeyDown={(e) => {
+                                if (e.key !== "Enter") return;
+                                // Enter sends, Shift+Enter starts a new line.
+                                // While an input method is composing a
+                                // character, Enter belongs to that composition.
                                 if (
-                                  e.key === "Enter" &&
-                                  (e.metaKey || e.ctrlKey)
-                                ) {
-                                  e.preventDefault();
-                                  void send();
-                                }
+                                  e.shiftKey ||
+                                  e.altKey ||
+                                  e.nativeEvent.isComposing
+                                )
+                                  return;
+                                e.preventDefault();
+                                void send();
                               }}
                             />
                             <div className="composer-actions">
-                              <span>
-                                {selectedChat
-                                  ? `${selectedChat.provider} · ${selectedChat.model}`
-                                  : state.settings.models[
-                                      state.settings.provider
-                                    ] || "Configure API in Settings"}
-                              </span>
+                              <select
+                                aria-label="Agent mode"
+                                title="What this conversation is allowed to do"
+                                value={selectedChat?.mode || chatMode}
+                                onChange={(e) => {
+                                  const next = e.target.value as ChatMode;
+                                  if (selectedChat)
+                                    call("chat:configure", {
+                                      id: selectedChat.id,
+                                      mode: next,
+                                    })
+                                      .then(refresh)
+                                      .catch(showError);
+                                  else setChatMode(next);
+                                }}
+                              >
+                                <option value="agent">Agent</option>
+                                <option value="plan">Plan</option>
+                                <option value="ask">Ask</option>
+                              </select>
+                              <select
+                                aria-label="Chat mode"
+                                value={selectedChat?.role || role}
+                                onChange={(e) => {
+                                  const next = e.target.value as Role;
+                                  if (selectedChat)
+                                    call("chat:configure", {
+                                      id: selectedChat.id,
+                                      role: next,
+                                    })
+                                      .then(refresh)
+                                      .catch(showError);
+                                  else setRole(next);
+                                }}
+                              >
+                                {roleInfo.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                aria-label="Chat provider"
+                                value={
+                                  selectedChat?.provider ||
+                                  state.settings.provider
+                                }
+                                onChange={(e) => {
+                                  const next = e.target.value as Provider;
+                                  if (selectedChat)
+                                    call("chat:configure", {
+                                      id: selectedChat.id,
+                                      provider: next,
+                                      model: state.settings.models[next] || "",
+                                    })
+                                      .then(refresh)
+                                      .catch(showError);
+                                  else
+                                    call("settings:save", {
+                                      provider: next,
+                                      model: state.settings.models[next] || "",
+                                    })
+                                      .then(refresh)
+                                      .catch(showError);
+                                }}
+                              >
+                                <optgroup label="Installed CLI">
+                                  {Object.entries(cliProviders).map(
+                                    ([value, cli]) => (
+                                      <option
+                                        key={value}
+                                        value={value}
+                                        disabled={
+                                          !cliInstalled(
+                                            state,
+                                            value as Provider,
+                                          )
+                                        }
+                                      >
+                                        {cli.label}
+                                      </option>
+                                    ),
+                                  )}
+                                </optgroup>
+                                <optgroup label="API key">
+                                  {Object.entries(apiProviderLabels).map(
+                                    ([value, label]) => (
+                                      <option key={value} value={value}>
+                                        {label}
+                                      </option>
+                                    ),
+                                  )}
+                                </optgroup>
+                              </select>
+                              <input
+                                aria-label="Chat model"
+                                className="composer-model"
+                                placeholder="Auto"
+                                defaultValue={
+                                  selectedChat?.model ||
+                                  state.settings.models[
+                                    state.settings.provider
+                                  ] ||
+                                  ""
+                                }
+                                key={selectedChat?.id || "defaults"}
+                                onBlur={(e) => {
+                                  const next = e.target.value.trim();
+                                  if (selectedChat) {
+                                    if (next === (selectedChat.model || ""))
+                                      return;
+                                    call("chat:configure", {
+                                      id: selectedChat.id,
+                                      model: next,
+                                    })
+                                      .then(refresh)
+                                      .catch(showError);
+                                  } else
+                                    call("settings:save", {
+                                      provider: state.settings.provider,
+                                      model: next,
+                                    })
+                                      .then(refresh)
+                                      .catch(showError);
+                                }}
+                              />
                               {selectedChat?.status === "running" ? (
                                 <button
                                   title="Cancel reply"
@@ -1155,7 +1345,7 @@ export default function App() {
                                 </button>
                               ) : (
                                 <button
-                                  title="Send message"
+                                  title="Send message (Enter)"
                                   disabled={!composer.trim() || chatBusy}
                                   onClick={send}
                                 >
@@ -1165,7 +1355,8 @@ export default function App() {
                             </div>
                           </div>
                           <p className="composer-note">
-                            Saved locally · ⌘ / Ctrl + Enter to send
+                            Saved locally · Enter to send, Shift + Enter for a
+                            new line
                           </p>
                         </div>
                       </section>
@@ -1207,6 +1398,50 @@ export default function App() {
                               <Plus size={13} />
                               New shell
                             </button>
+                            <select
+                              className="external-editor-select"
+                              aria-label="Start a coding agent in this project"
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value)
+                                  startTerminal(
+                                    e.target.value as Session["kind"],
+                                  );
+                                e.target.value = "";
+                              }}
+                            >
+                              <option value="">Start agent…</option>
+                              <option value="codex">Codex</option>
+                              <option value="claude">Claude Code</option>
+                              <option value="opencode">OpenCode</option>
+                            </select>
+                            <button
+                              title="Run a build command"
+                              onClick={() => {
+                                setCommand("npm run build");
+                                setModal("build");
+                              }}
+                            >
+                              <Play size={13} />
+                              Build
+                            </button>
+                            <select
+                              className="external-editor-select"
+                              aria-label="Open project in external editor"
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value)
+                                  call("project:open-editor", {
+                                    projectId,
+                                    editor: e.target.value,
+                                  }).catch(showError);
+                                e.target.value = "";
+                              }}
+                            >
+                              <option value="">Open in…</option>
+                              <option value="cursor">Cursor</option>
+                              <option value="code">VS Code</option>
+                            </select>
                             <button
                               title="Expand terminal workspace"
                               onClick={() => {
@@ -1224,30 +1459,48 @@ export default function App() {
                           role="tablist"
                           aria-label="Terminal sessions"
                         >
-                          {projectSessions.map((s) => (
-                            <button
-                              role="tab"
-                              aria-selected={
-                                (preferences.editorSessionIds[0] ||
-                                  selectedSession?.id) === s.id
-                              }
-                              key={s.id}
-                              title={`${s.title} · ${s.status}`}
-                              onClick={() => {
-                                setSessionId(s.id);
-                                updatePreferences({
-                                  editorSessionIds: [
-                                    s.id,
-                                    ...preferences.editorSessionIds.filter(
-                                      (id) => id !== s.id,
-                                    ),
-                                  ].slice(0, 4),
-                                });
-                              }}
-                            >
-                              <span className={`provider-dot ${s.kind}`} />
-                              {s.title}
-                            </button>
+                          {terminalTabs.map((s) => (
+                            <span className="terminal-session-tab" key={s.id}>
+                              <button
+                                role="tab"
+                                aria-selected={
+                                  (preferences.editorSessionIds[0] ||
+                                    selectedSession?.id) === s.id
+                                }
+                                title={`${s.title} · ${s.status}`}
+                                onClick={() => {
+                                  setSessionId(s.id);
+                                  updatePreferences({
+                                    editorSessionIds: [
+                                      s.id,
+                                      ...preferences.editorSessionIds.filter(
+                                        (id) => id !== s.id,
+                                      ),
+                                    ].slice(0, 4),
+                                  });
+                                }}
+                              >
+                                <span className={`provider-dot ${s.kind}`} />
+                                {s.title}
+                              </button>
+                              <button
+                                className="tab-dismiss"
+                                aria-label={`Remove ${s.title} from this list`}
+                                title={
+                                  s.status === "running"
+                                    ? "Stop this terminal before removing it"
+                                    : "Remove from this list (saved output is kept)"
+                                }
+                                disabled={s.status === "running"}
+                                onClick={() =>
+                                  call("terminal:dismiss", { id: s.id })
+                                    .then(refresh)
+                                    .catch(showError)
+                                }
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
                           ))}
                         </div>
                         <TerminalDeck
@@ -1255,8 +1508,9 @@ export default function App() {
                           onSizing={(terminalSizing) =>
                             updatePreferences({ terminalSizing })
                           }
-                          sessions={projectSessions}
+                          sessions={terminalTabs}
                           projects={[project]}
+                          agents={state.agents}
                           count={preferences.editorTerminalLayout}
                           pinned={preferences.editorSessionIds}
                           preferred={selectedSession?.id}
@@ -1443,6 +1697,9 @@ export default function App() {
           {view === "settings" && (
             <SettingsView
               state={state}
+              preferences={preferences}
+              onPreferences={updatePreferences}
+              onCommand={(command) => commandHandler.current(command)}
               onError={showError}
               onSaved={async () => {
                 await refresh();
@@ -1462,11 +1719,11 @@ export default function App() {
           </span>
           <span className="statusbar-right">
             <button
-              title="Provider-reported API tokens for this repository. CLI subscription usage is not collected."
+              title="Tokens this workspace has used, as the provider reported them. API runs are billed to your key; CLI runs spend the subscription of the tool that ran them."
               onClick={() => setView("usage")}
             >
               <Zap size={12} />
-              {compact(projectTokens)} API tokens · CLI —
+              {compact(projectTokens)} API · {compact(projectCliTokens)} CLI
             </button>
             <button
               title="Running agent processes / saved agents in this repository"
@@ -1795,174 +2052,6 @@ function UsageView({
             ))
         )}
       </section>
-    </>
-  );
-}
-
-function SettingsView({
-  state,
-  onError,
-  onSaved,
-}: {
-  state: State;
-  onError: (error: unknown) => void;
-  onSaved: () => void;
-}) {
-  const [provider, setProvider] = useState<Provider>(state.settings.provider),
-    [model, setModel] = useState(
-      state.settings.models[state.settings.provider],
-    ),
-    [key, setKey] = useState(""),
-    [busy, setBusy] = useState(false);
-  const submit = async (remove = false) => {
-    setBusy(true);
-    try {
-      await call("settings:save", {
-        provider,
-        model,
-        ...(remove ? { key: "" } : key ? { key } : {}),
-      });
-      setKey("");
-      onSaved();
-    } catch (e) {
-      onError(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <>
-      <PageHeading
-        eyebrow="MAKE YOURSELF AT HOME"
-        title="Your workspace. Your choices."
-        description="Connect API chat once. Keep using your official CLI logins in the terminal."
-      />
-      <div className="settings-layout">
-        <section className="panel settings-card">
-          <div className="panel-heading">
-            <h2>API chat provider</h2>
-            <span className="subtle-pill">Bring your own key</span>
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
-          >
-            <label>
-              Provider
-              <select
-                value={provider}
-                onChange={(e) => {
-                  const p = e.target.value as Provider;
-                  setProvider(p);
-                  setModel(state.settings.models[p]);
-                  setKey("");
-                }}
-              >
-                <option value="openai">OpenAI · Responses API</option>
-                <option value="anthropic">Anthropic · Messages API</option>
-              </select>
-            </label>
-            <label>
-              Model ID
-              <input
-                required
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="Enter a model available to your API account"
-              />
-            </label>
-            <p className="field-note">
-              Use the exact model ID from your provider. Model access and
-              pricing depend on your account.
-            </p>
-            <label>
-              API key{" "}
-              <span
-                className={
-                  state.capabilities.configured.includes(provider)
-                    ? "configured"
-                    : "muted"
-                }
-              >
-                {state.capabilities.configured.includes(provider)
-                  ? "Saved securely"
-                  : "Not connected"}
-              </span>
-              <input
-                type="password"
-                autoComplete="off"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder={
-                  state.capabilities.configured.includes(provider)
-                    ? "Leave blank to keep your saved key"
-                    : "Paste your API key"
-                }
-              />
-            </label>
-            <p className="field-note">
-              Encrypted with the operating system. Keys stay out of project
-              files, transcripts, and exports.
-            </p>
-            <div className="settings-actions">
-              <button disabled={busy} className="button primary" type="submit">
-                <Check size={16} />
-                Save provider
-              </button>
-              {state.capabilities.configured.includes(provider) && (
-                <button
-                  disabled={busy}
-                  className="button danger-text"
-                  type="button"
-                  onClick={() => submit(true)}
-                >
-                  Remove key
-                </button>
-              )}
-            </div>
-          </form>
-        </section>
-        <aside className="settings-explainer">
-          <ShieldCheck size={28} />
-          <h2>
-            One workspace.
-            <br />
-            Separate accounts.
-          </h2>
-          <p>
-            Your ChatGPT / Codex and Claude subscriptions stay with their
-            official tools. Relay’s API chat uses separate API billing.
-          </p>
-          <div className="settings-detail">
-            <b>Saved on this device</b>
-            <p>
-              Projects, conversations, terminal output, editor drafts, and usage
-              records.
-            </p>
-          </div>
-          <div className="settings-detail">
-            <b>Sent only when you chat</b>
-            <p>
-              The conversation and selected skill go to your chosen API
-              provider. Project files are not automatically attached.
-            </p>
-          </div>
-          <div className="settings-detail">
-            <b>Background behavior</b>
-            <p>
-              Closing the window hides Relay. Quit from the menu or tray to stop
-              it. Restarting your computer interrupts running processes.
-            </p>
-          </div>
-          <span className="subtle-pill">
-            {state.capabilities.secureStorage
-              ? "OS encryption available"
-              : "OS encryption unavailable"}
-          </span>
-        </aside>
-      </div>
     </>
   );
 }

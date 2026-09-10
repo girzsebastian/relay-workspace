@@ -17,7 +17,35 @@ const { z } = require("zod");
 const { Store, atomicWrite } = require("./store.cjs");
 const files = require("./files.cjs");
 const { Terminals, executable } = require("./terminals.cjs");
-const { complete } = require("./providers.cjs");
+const { complete, roles } = require("./providers.cjs");
+const git = require("./git.cjs");
+const { search, replaceInFiles } = require("./search.cjs");
+const containers = require("./containers.cjs");
+const {
+  isCliProvider,
+  cliExecutable,
+  cliLabel,
+  cliPrompt,
+} = require("./cli-chat.cjs");
+const {
+  modeList,
+  runModeList,
+  DEFAULT_ALLOWLIST,
+  runStream,
+} = require("./cli-stream.cjs");
+const { AgentBridge } = require("./agent-bridge.cjs");
+const { Approvals } = require("./approvals.cjs");
+const { LanguageServices } = require("./language.cjs");
+const {
+  interruptedReport,
+  summarise,
+  pruneUnrecoverable,
+  highlight,
+} = require("./recovery.cjs");
+const {
+  providerSessionExists,
+  readableTail,
+} = require("./provider-sessions.cjs");
 const { icon } = require("./icon.cjs");
 const { Agents } = require("./agents.cjs");
 const { openEditor } = require("./editors.cjs");
@@ -36,10 +64,19 @@ let win,
   tray,
   store,
   terminals,
+  bridge,
+  approvals,
+  language,
   quitting = false;
 const requests = new Map();
 const id = z.string().uuid();
-const provider = z.enum(["openai", "anthropic"]);
+const provider = z.enum([
+  "openai",
+  "anthropic",
+  "claude-cli",
+  "codex-cli",
+  "opencode-cli",
+]);
 const text = z.string().max(100000);
 const ipc = (name, schema, handler) =>
   ipcMain.handle(`relay:${name}`, async (event, input) => {
@@ -60,6 +97,29 @@ function publish(type, payload = {}) {
   if (win && !win.isDestroyed())
     win.webContents.send("relay:event", { type, ...payload });
 }
+
+// The agent reaches Relay through a loopback bridge with a per-launch token, so
+// a process it starts is a terminal the person can see rather than something
+// hidden inside the run.
+async function relayMcpConfig(runId) {
+  if (!bridge) return null;
+  const { url, token } = await bridge.start();
+  return {
+    mcpServers: {
+      relay: {
+        command: process.execPath,
+        args: [path.join(__dirname, "mcp-relay.cjs")],
+        env: {
+          ELECTRON_RUN_AS_NODE: "1",
+          RELAY_BRIDGE_URL: url,
+          RELAY_BRIDGE_TOKEN: token,
+          ...(runId ? { RELAY_RUN_ID: runId } : {}),
+        },
+      },
+    },
+  };
+}
+
 function save() {
   store.save();
   publish("changed");
@@ -171,6 +231,9 @@ function register() {
         instructions: z.string().max(20000),
         memory: z.string().max(20000),
         skillPath: z.string().max(4096).nullable().optional(),
+        // Which installed CLI runs this agent, and on which model.
+        provider: z.enum(["codex", "claude", "opencode"]).optional(),
+        model: z.string().trim().max(100).optional(),
       }),
     }),
     (a) => {
@@ -188,12 +251,28 @@ function register() {
       return result;
     },
   );
-  ipc("task:start", z.object({ id }), (a) => {
+  // The snapshot is taken before the CLI runs, so what it changes can be told
+  // apart from what was already modified in the workspace.
+  const startWithSnapshot = async (projectId, run) => {
+    const taken = await git
+      .snapshot(store.project(projectId).path)
+      .catch(() => null);
     try {
-      return agents.startTask(a.id);
+      const session = run();
+      if (taken) {
+        session.snapshot = taken;
+        save();
+      }
+      return session;
     } finally {
       publish("changed");
     }
+  };
+  ipc("task:start", z.object({ id }), (a) => {
+    const task = agents.task(a.id);
+    return startWithSnapshot(agents.get(task.agentId).projectId, () =>
+      agents.startTask(a.id),
+    );
   });
   ipc(
     "task:resolve",
@@ -222,13 +301,10 @@ function register() {
   ipc(
     "agent:start",
     z.object({ id, task: z.string().trim().min(1).max(20000) }),
-    (a) => {
-      try {
-        return agents.start(a.id, a.task);
-      } finally {
-        publish("changed");
-      }
-    },
+    (a) =>
+      startWithSnapshot(agents.get(a.id).projectId, () =>
+        agents.start(a.id, a.task),
+      ),
   );
   ipc(
     "agent:mark",
@@ -350,6 +426,9 @@ function register() {
           })
           .optional(),
         showExplorer: z.boolean().optional(),
+        sidebarPanel: z
+          .enum(["explorer", "search", "source-control", "containers"])
+          .optional(),
         showChat: z.boolean().optional(),
         showTerminal: z.boolean().optional(),
         splitEditor: z.boolean().optional(),
@@ -451,7 +530,14 @@ function register() {
   ipc(
     "terminal:write",
     z.object({ id, data: z.string().max(1024 * 1024) }),
-    (a) => terminals.write(a.id, a.data),
+    (a) => {
+      // An agent terminal is the agent's output, not a shell to type into.
+      if (store.session(a.id).agentOwned)
+        throw new Error(
+          "Agent terminals are read-only. Open a new shell to run something yourself.",
+        );
+      return terminals.write(a.id, a.data);
+    },
   );
   ipc(
     "terminal:resize",
@@ -463,6 +549,7 @@ function register() {
     (a) => terminals.resize(a.id, a.cols, a.rows),
   );
   ipc("terminal:stop", z.object({ id }), (a) => terminals.stop(a.id));
+  ipc("terminal:dismiss", z.object({ id }), (a) => terminals.dismiss(a.id));
   ipc("terminal:log", z.object({ id }), (a) => {
     const s = store.session(a.id);
     return { data: store.readLog(a.id), sequence: s.sequence || 0 };
@@ -472,11 +559,16 @@ function register() {
     z.object({
       projectId: id,
       provider,
-      model: z.string().trim().min(1).max(100),
+      // A CLI provider runs on its own default model, so an empty value is
+      // valid there; an API provider still needs an explicit model id.
+      model: z.string().trim().max(100),
       role: z.enum(["builder", "architect", "reviewer", "product"]),
+      mode: z.enum(["agent", "plan", "ask"]).optional(),
       skillPath: z.string().max(4096).optional(),
     }),
     (a) => {
+      if (!isCliProvider(a.provider) && !a.model)
+        throw new Error("Set a model ID in Settings before starting a chat.");
       const project = store.project(a.projectId);
       const skill = a.skillPath
         ? files.skills(project.path).find((s) => s.path === a.skillPath)
@@ -502,12 +594,22 @@ function register() {
     const chat = store.chat(a.id);
     if (requests.has(chat.id))
       throw new Error("A reply is already in progress.");
-    const encrypted = credentials()[chat.provider];
-    if (!encrypted)
-      throw new Error("Add an API key in Settings before sending.");
-    if (!safeStorage.isEncryptionAvailable())
-      throw new Error("OS credential encryption is unavailable.");
-    const key = safeStorage.decryptString(Buffer.from(encrypted, "base64"));
+    const usesCli = isCliProvider(chat.provider);
+    let key = null;
+    if (usesCli) {
+      if (!executable(cliExecutable(chat.provider)))
+        throw new Error(
+          cliLabel(chat.provider) +
+            " is not installed or not on PATH. Install it, or choose an API provider in Settings.",
+        );
+    } else {
+      const encrypted = credentials()[chat.provider];
+      if (!encrypted)
+        throw new Error("Add an API key in Settings before sending.");
+      if (!safeStorage.isEncryptionAvailable())
+        throw new Error("OS credential encryption is unavailable.");
+      key = safeStorage.decryptString(Buffer.from(encrypted, "base64"));
+    }
     const message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -521,9 +623,104 @@ function register() {
     const controller = new AbortController();
     requests.set(chat.id, controller);
     const startedAt = Date.now();
-    const timeout = setTimeout(() => controller.abort(), 180000);
     save();
+    const streams =
+      usesCli &&
+      chat.provider !== "opencode-cli" &&
+      (chat.mode || "agent") !== "ask";
+    const timeout = setTimeout(
+      () => controller.abort(),
+      streams ? 30 * 60000 : 3 * 60000,
+    );
     try {
+      if (streams) {
+        // The card needs to say which conversation is asking, and cancelling
+        // the reply has to cancel the question with it.
+        const runId = crypto.randomUUID();
+        const unregister = bridge?.register(runId, {
+          projectId: chat.projectId,
+          chatId: chat.id,
+          provider: chat.provider,
+          signal: controller.signal,
+        });
+        controller.signal.addEventListener(
+          "abort",
+          () => approvals?.cancelRun(runId),
+          { once: true },
+        );
+        // Built before the empty reply is appended, so the model is never
+        // shown its own blank turn.
+        const system =
+          (roles[chat.role] || roles.builder) +
+          (chat.skill ? "\n\nUser-selected project skill:\n" + chat.skill : "");
+        const prompt = cliPrompt(
+          chat.messages.map((m) => ({ role: m.role, content: m.content })),
+        );
+        const workspacePath = store.project(chat.projectId).path;
+        const before = await git.snapshot(workspacePath).catch(() => null);
+        const reply = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "",
+          snapshot: before,
+          steps: [],
+          createdAt: Date.now(),
+        };
+        chat.messages.push(reply);
+        let lastPublish = 0;
+        const stream = await runStream(
+          {
+            provider: chat.provider,
+            model: chat.model,
+            mode: chat.mode || "agent",
+            runMode: store.data.settings.runMode || "auto-review",
+            allowlist: store.data.settings.allowlist,
+            mcp: await relayMcpConfig(runId),
+            system,
+            prompt,
+            cwd: store.project(chat.projectId).path,
+            signal: controller.signal,
+          },
+          (steps) => {
+            reply.steps = steps;
+            const text = steps.filter((s) => s.kind === "text").at(-1);
+            if (text) reply.content = text.text;
+            // Publishing on every event would redraw faster than anyone can
+            // read; a few times a second is enough to feel live.
+            const now = Date.now();
+            if (now - lastPublish > 220) {
+              lastPublish = now;
+              save();
+            }
+          },
+        );
+        reply.steps = stream.steps;
+        reply.content = stream.text || reply.content || "";
+        reply.durationMs = Date.now() - startedAt;
+        // Recorded once, when the run ends: the list is what this reply did,
+        // not what the working tree happens to hold later.
+        reply.changed = before
+          ? await git.changesSince(workspacePath, before).catch(() => [])
+          : [];
+        chat.status = "idle";
+        store.data.usage.push({
+          id: crypto.randomUUID(),
+          projectId: chat.projectId,
+          chatId: chat.id,
+          provider: chat.provider,
+          model: chat.model,
+          createdAt: Date.now(),
+          durationMs: reply.durationMs,
+          source: "provider-cli",
+          ...stream.usage,
+          measured: !!stream.usage,
+        });
+        clearTimeout(timeout);
+        requests.delete(chat.id);
+        unregister?.();
+        save();
+        return chat;
+      }
       const result = await complete({
         provider: chat.provider,
         model: chat.model,
@@ -534,6 +731,7 @@ function register() {
         role: chat.role,
         skill: chat.skill,
         key,
+        cwd: store.project(chat.projectId).path,
         signal: controller.signal,
       });
       chat.messages.push({
@@ -551,7 +749,7 @@ function register() {
         model: chat.model,
         createdAt: Date.now(),
         durationMs: Date.now() - startedAt,
-        source: "provider-api",
+        source: usesCli ? "provider-cli" : "provider-api",
         ...result.usage,
         measured: !!result.usage,
       });
@@ -567,6 +765,29 @@ function register() {
     }
     return chat;
   });
+  ipc(
+    "chat:configure",
+    z.object({
+      id,
+      provider: provider.optional(),
+      model: z.string().trim().max(100).optional(),
+      role: z.enum(["builder", "architect", "reviewer", "product"]).optional(),
+      mode: z.enum(["agent", "plan", "ask"]).optional(),
+    }),
+    (a) => {
+      const chat = store.chat(a.id);
+      if (requests.has(chat.id))
+        throw new Error("Wait for the current reply before changing this.");
+      if (a.provider !== undefined) chat.provider = a.provider;
+      if (a.model !== undefined) chat.model = a.model;
+      if (a.role !== undefined) chat.role = a.role;
+      if (a.mode !== undefined) chat.mode = a.mode;
+      if (!isCliProvider(chat.provider) && !chat.model)
+        throw new Error("An API provider needs a model ID.");
+      save();
+      return chat;
+    },
+  );
   ipc("chat:cancel", z.object({ id }), (a) => requests.get(a.id)?.abort());
   ipc(
     "settings:save",
@@ -576,6 +797,10 @@ function register() {
       key: z.string().trim().max(1000).optional(),
     }),
     (a) => {
+      if (isCliProvider(a.provider) && a.key)
+        throw new Error(
+          "CLI providers sign in with their own tool. No API key is needed here.",
+        );
       if (a.key !== undefined) {
         const keys = credentials();
         if (a.key) {
@@ -593,6 +818,272 @@ function register() {
       store.data.settings.models[a.provider] = a.model;
       save();
     },
+  );
+  const repo = (projectId, relative) =>
+    git.resolveRepository(store.project(projectId).path, relative);
+  const target = z.object({
+    projectId: id,
+    repo: z.string().max(4096).optional(),
+  });
+  ipc("git:repos", z.object({ projectId: id }), (a) =>
+    git.statuses(store.project(a.projectId).path),
+  );
+  ipc("git:status", target, (a) => git.status(repo(a.projectId, a.repo)));
+  ipc(
+    "git:log",
+    target.extend({ limit: z.number().int().min(1).max(200).optional() }),
+    (a) => git.log(repo(a.projectId, a.repo), a.limit),
+  );
+  ipc("git:diff", target.extend({ file: z.string().min(1).max(4096) }), (a) =>
+    git.fileDiff(repo(a.projectId, a.repo), a.file),
+  );
+  ipc(
+    "git:commit",
+    target.extend({
+      message: z.string().trim().min(1).max(4000),
+      paths: z.array(z.string().max(4096)).max(2000).optional(),
+    }),
+    (a) => git.commit(repo(a.projectId, a.repo), a.message, a.paths),
+  );
+  ipc("git:push", target.extend({ setUpstream: z.boolean().optional() }), (a) =>
+    git.push(repo(a.projectId, a.repo), { setUpstream: a.setUpstream }),
+  );
+  ipc(
+    "git:discard",
+    target.extend({ paths: z.array(z.string().max(4096)).min(1).max(2000) }),
+    (a) => git.discard(repo(a.projectId, a.repo), a.paths),
+  );
+  ipc("git:agent-changes", z.object({ projectId: id, sessionId: id }), (a) =>
+    git.changesSince(
+      store.project(a.projectId).path,
+      store.session(a.sessionId).snapshot,
+    ),
+  );
+  ipc(
+    "agent:handoff",
+    z.object({
+      fromId: id,
+      toId: id,
+      text: z.string().trim().min(1).max(20000),
+      sourceTaskId: id.optional(),
+    }),
+    (a) => {
+      const task = agents.handoff(a);
+      publish("changed");
+      return task;
+    },
+  );
+  // Which lines of an open file differ from the last commit, so the editor
+  // can colour them the way VS Code does.
+  ipc(
+    "git:file-changes",
+    z.object({ projectId: id, path: z.string().min(1).max(4096) }),
+    (a) => git.fileLineChanges(store.project(a.projectId).path, a.path),
+  );
+  ipc("git:hunks", target.extend({ file: z.string().min(1).max(4096) }), (a) =>
+    git.fileHunks(repo(a.projectId, a.repo), a.file),
+  );
+  ipc(
+    "git:revert-hunk",
+    target.extend({
+      file: z.string().min(1).max(4096),
+      index: z.number().int().min(0).max(5000),
+    }),
+    (a) => git.revertHunk(repo(a.projectId, a.repo), a.file, a.index),
+  );
+  ipc(
+    "approval:resolve",
+    z.object({
+      id,
+      decision: z.enum(["accept", "skip", "remember"]),
+    }),
+    (a) => approvals.resolve(a.id, a.decision),
+  );
+  // A one-line description per session, taken from what it actually printed,
+  // so a dozen runs of the same tool are told apart by their work.
+  ipc("sessions:summaries", z.object({ projectId: id.optional() }), (a) => {
+    const summaries = {};
+    for (const session of store.data.sessions) {
+      if (a.projectId && session.projectId !== a.projectId) continue;
+      if (session.dismissedAt) continue;
+      try {
+        const line = highlight(readableTail(store.readLog(session.id), 4000))
+          .split("\n")
+          .filter(Boolean)
+          .slice(-1)[0];
+        if (line) summaries[session.id] = line.slice(0, 200);
+      } catch {
+        // A missing log only means no description.
+      }
+    }
+    return summaries;
+  });
+  ipc("recovery:report", z.object({}), () => {
+    const report = interruptedReport(store, {
+      sessionExists: providerSessionExists,
+    });
+    return { report, summary: summarise(report) };
+  });
+  ipc("chat:revert", z.object({ id, messageId: id }), async (a) => {
+    const chat = store.chat(a.id);
+    const message = chat.messages.find((m) => m.id === a.messageId);
+    if (!message) throw new Error("That message is no longer here.");
+    if (!message.snapshot)
+      throw new Error(
+        "This reply was not recorded, so Relay cannot tell what it changed.",
+      );
+    const workspace = store.project(chat.projectId).path;
+    // Measured now rather than trusted from before: the person may have
+    // kept or undone some of it since.
+    const repos = await git.changesSince(workspace, message.snapshot);
+    const skipped = [];
+    let reverted = 0;
+    for (const repo of repos) {
+      const paths = repo.files
+        .filter((file) => !file.untracked)
+        .map((file) => file.path);
+      for (const file of repo.files)
+        if (file.untracked) skipped.push(file.path);
+      if (!paths.length) continue;
+      await git.discard(git.resolveRepository(workspace, repo.relative), paths);
+      reverted += paths.length;
+    }
+    message.reverted = { at: Date.now(), files: reverted };
+    save();
+    publish("changed");
+    return { reverted, skipped };
+  });
+  // Completions, errors and types come from the project's own TypeScript
+  // service, reading the buffer the editor is showing rather than the file
+  // on disk, so an unsaved edit is answered about.
+  const languageArgs = z.object({
+    projectId: id,
+    path: z.string().min(1).max(4096),
+    text: z.string().max(4 * 1024 * 1024),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .max(8 * 1024 * 1024)
+      .optional(),
+  });
+  const languageFile = (projectId, relative) =>
+    files.resolveFile(store.project(projectId).path, relative);
+  ipc("lang:completions", languageArgs, (a) =>
+    language.completions(
+      store.project(a.projectId).path,
+      languageFile(a.projectId, a.path),
+      a.offset || 0,
+      a.text,
+    ),
+  );
+  ipc("lang:diagnostics", languageArgs, (a) =>
+    language.diagnostics(
+      store.project(a.projectId).path,
+      languageFile(a.projectId, a.path),
+      a.text,
+    ),
+  );
+  ipc("lang:hover", languageArgs, (a) =>
+    language.hover(
+      store.project(a.projectId).path,
+      languageFile(a.projectId, a.path),
+      a.offset || 0,
+      a.text,
+    ),
+  );
+  ipc(
+    "lang:detail",
+    languageArgs.extend({ name: z.string().min(1).max(200) }),
+    (a) =>
+      language.detail(
+        store.project(a.projectId).path,
+        languageFile(a.projectId, a.path),
+        a.offset || 0,
+        a.text,
+        a.name,
+      ),
+  );
+  ipc("chat:modes", z.object({}), () => ({
+    modes: modeList(),
+    runModes: runModeList(),
+    defaultAllowlist: DEFAULT_ALLOWLIST,
+  }));
+  ipc(
+    "settings:execution",
+    z.object({
+      runMode: z.enum(["allowlist", "auto-review", "everything"]),
+      allowlist: z.array(z.string().trim().max(200)).max(200),
+    }),
+    (a) => {
+      store.data.settings.runMode = a.runMode;
+      store.data.settings.allowlist = a.allowlist.filter(Boolean);
+      save();
+      return store.data.settings;
+    },
+  );
+  ipc("git:menu", z.object({}), () => git.menu());
+  ipc(
+    "git:run",
+    target.extend({
+      command: z.string().min(1).max(64),
+      input: z.string().max(2000).optional(),
+    }),
+    (a) => git.runCommand(repo(a.projectId, a.repo), a.command, a.input),
+  );
+  ipc("git:fetch", target, (a) => git.fetch(repo(a.projectId, a.repo)));
+  ipc("git:pull", target, (a) => git.pull(repo(a.projectId, a.repo)));
+  ipc("git:sync", target, (a) => git.sync(repo(a.projectId, a.repo)));
+  ipc("git:branches", target, (a) => git.branches(repo(a.projectId, a.repo)));
+  ipc(
+    "git:checkout",
+    target.extend({ branch: z.string().min(1).max(400) }),
+    (a) => git.checkout(repo(a.projectId, a.repo), a.branch),
+  );
+  ipc("git:stash", target.extend({ pop: z.boolean().optional() }), (a) =>
+    git.stash(repo(a.projectId, a.repo), { pop: a.pop }),
+  );
+  ipc(
+    "search:files",
+    z.object({
+      projectId: id,
+      query: z.string().max(500),
+      regex: z.boolean().optional(),
+      caseSensitive: z.boolean().optional(),
+      wholeWord: z.boolean().optional(),
+      include: z.string().max(500).optional(),
+      exclude: z.string().max(500).optional(),
+    }),
+    (a) => search(repo(a.projectId), a),
+  );
+  ipc("containers:list", z.object({}), () =>
+    containers.list(store.data.projects),
+  );
+  ipc(
+    "containers:logs",
+    z.object({
+      id: z.string().min(1).max(128),
+      tail: z.number().int().min(1).max(2000).optional(),
+    }),
+    (a) => containers.logs(a.id, a.tail),
+  );
+  ipc("containers:stop", z.object({ id: z.string().min(1).max(128) }), (a) =>
+    containers.stop(a.id),
+  );
+  ipc(
+    "search:replace",
+    z.object({
+      projectId: id,
+      query: z.string().min(1).max(500),
+      replacement: z.string().max(2000),
+      regex: z.boolean().optional(),
+      caseSensitive: z.boolean().optional(),
+      wholeWord: z.boolean().optional(),
+      include: z.string().max(500).optional(),
+      exclude: z.string().max(500).optional(),
+      files: z.array(z.string().max(4096)).max(5000).optional(),
+    }),
+    (a) => replaceInFiles(store.project(a.projectId).path, a),
   );
   ipc("usage:export", z.object({ projectId: id.optional() }), async (a) => {
     const rows = store.data.usage.filter(
@@ -666,6 +1157,10 @@ else {
       store = new Store(app.getPath("userData"));
       terminals = new Terminals(store, publish, require("node-pty"));
       agents = new Agents(store, terminals);
+      pruneUnrecoverable(store, { sessionExists: providerSessionExists });
+      approvals = new Approvals(store, publish);
+      language = new LanguageServices();
+      bridge = new AgentBridge(store, terminals, publish, approvals);
       electronSession.defaultSession.setPermissionRequestHandler(
         (_wc, _permission, callback) => callback(false),
       );

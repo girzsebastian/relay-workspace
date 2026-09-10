@@ -8,7 +8,27 @@ import {
   FolderOpen,
   RefreshCw,
 } from "lucide-react";
-import { call, type FileEntry, type Project } from "./types";
+import { call, type FileEntry, type Project, type RepoStatus } from "./types";
+import { statusLetter } from "./SourceControl";
+
+// A workspace can hold several checkouts, so decorations are merged from every
+// repository found under it and re-rooted at the workspace folder.
+export function decorate(repos: RepoStatus[] | null) {
+  const marks = new Map<string, string>();
+  for (const repo of repos || []) {
+    if (!repo.repository) continue;
+    for (const file of repo.files) {
+      const full = repo.relative ? `${repo.relative}/${file.path}` : file.path;
+      if (!full) continue;
+      marks.set(full, statusLetter(file));
+      // Every ancestor folder is flagged so a change is visible while collapsed.
+      const parts = full.split("/");
+      for (let i = 1; i < parts.length; i += 1)
+        marks.set(parts.slice(0, i).join("/"), "•");
+    }
+  }
+  return marks;
+}
 
 export default function FileTree({
   project,
@@ -25,7 +45,22 @@ export default function FileTree({
       project.expandedPaths || [],
     ),
     [version, setVersion] = useState(0),
+    [changes, setChanges] = useState<Map<string, string>>(new Map()),
     [rootOpen, setRootOpen] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    call<RepoStatus[]>("git:repos", { projectId: project.id })
+      .then((status) => {
+        if (!cancelled) setChanges(decorate(status));
+      })
+      // A project outside git simply has no decorations to show.
+      .catch(() => {
+        if (!cancelled) setChanges(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, version]);
   const toggle = (path: string) => {
     const next = expanded.includes(path)
       ? expanded.filter((p) => p !== path)
@@ -40,7 +75,7 @@ export default function FileTree({
       <div className="pane-heading">
         <span>EXPLORER</span>
         <button
-          title="Refresh file tree"
+          title="Refresh file tree and git status"
           onClick={() => setVersion((v) => v + 1)}
         >
           <RefreshCw size={13} />
@@ -66,6 +101,7 @@ export default function FileTree({
             onOpen={onOpen}
             onError={onError}
             version={version}
+            changes={changes}
           />
         )}
       </div>
@@ -82,6 +118,7 @@ function Branch({
   onOpen,
   onError,
   version,
+  changes,
 }: {
   projectId: string;
   path: string;
@@ -92,6 +129,7 @@ function Branch({
   onOpen: (entry: FileEntry) => void;
   onError: (error: unknown) => void;
   version: number;
+  changes: Map<string, string>;
 }) {
   const [entries, setEntries] = useState<FileEntry[] | null>(null),
     [failed, setFailed] = useState(false);
@@ -144,7 +182,22 @@ function Branch({
                   <FileIcon path={entry.path} />
                 </>
               )}
-              <span>{entry.name}</span>
+              <span className={changes.has(entry.path) ? "changed" : undefined}>
+                {entry.name}
+              </span>
+              {changes.has(entry.path) && (
+                <span
+                  aria-hidden="true"
+                  className={`tree-mark m-${changes.get(entry.path)}`}
+                  title={
+                    changes.get(entry.path) === "•"
+                      ? "Contains changes"
+                      : "Changed since the last commit"
+                  }
+                >
+                  {changes.get(entry.path)}
+                </span>
+              )}
             </button>
             {entry.directory && open && depth < 40 && (
               <Branch
@@ -157,6 +210,7 @@ function Branch({
                 onOpen={onOpen}
                 onError={onError}
                 version={version}
+                changes={changes}
               />
             )}
           </div>

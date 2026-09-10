@@ -1,0 +1,29 @@
+name: Feature request
+description: Something Relay should do and does not
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you doing when you need this? Describe the work, not the
+        solution — it usually points at a better answer than the one either of
+        us started with.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would build
+      description: If you have a shape in mind, describe it. Sketches welcome.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How you work around it today
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you like to build it?
+      options:
+        - label: I would be willing to open a pull request for this
