@@ -202,7 +202,7 @@ Relay is an independent project, not affiliated with OpenAI, Anthropic, Cursor, 
 
 ## Licence
 
-**GNU Affero General Public License v3.0 or later.** Use it, modify it, self-host it, fork it. The one condition worth knowing: if you offer a modified Relay to other people over a network, you have to publish that version's source. See [LICENSE](LICENSE).
+**GNU Affero General Public License v3.0 or later.** Use it, modify it, self-host it, fork it. The one condition worth knowing: if you offer a modified Relay to other people over a network, you have to publish that version's source. The full text is in [LICENSE](LICENSE); the copyright and third-party notices are in [NOTICE](NOTICE).
 
 Contributions are accepted under a [Contributor License Agreement](CLA.md). You keep the copyright to everything you write; it grants a licence so a hosted Relay can be offered under other terms later without tracking down every contributor. Nothing contributed ever leaves the AGPL version.
 

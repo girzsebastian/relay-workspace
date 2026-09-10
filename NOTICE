@@ -1,0 +1,26 @@
+Relay — a local desktop workbench for running coding agents
+Copyright (C) 2026 Girz Sebastian
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program. If not, see <https://www.gnu.org/licenses/>. The full text is
+in LICENSE.
+
+Contributions are accepted under the Contributor License Agreement in CLA.md,
+which lets the maintainer offer the work under other terms as well. Everything
+published here stays available under the AGPL, permanently.
+
+Relay was distributed under the MIT License until 2026-09-10. Anything obtained
+under those terms remains available under them.
+
+Third-party components are distributed under their own licences. Every runtime
+dependency is MIT, ISC or Apache-2.0; see package.json and the packages
+themselves for the exact terms.
