@@ -900,13 +900,22 @@ async function until(fn, timeout = 12000) {
     const savedUi = (await api("state")).ui;
     console.log("Desktop check: agent records passed; restarting test process");
     const child = desktop.process();
-    const exited = once(child, "exit");
+    // Registered before the kill, and skipped if the process is already gone:
+    // an "exit" that has already fired will never arrive again.
+    const exited =
+      child.exitCode === null ? once(child, "exit") : Promise.resolve([]);
     if (process.platform === "win32") {
       // Kill only this isolated test instance and its child PTYs. Killing the
       // Electron parent alone leaves ConPTY children holding fixture files.
-      execFileSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-        stdio: "ignore",
-      });
+      try {
+        execFileSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+        });
+      } catch {
+        // taskkill exits 128 when there is no such process, which is the state
+        // this step wanted anyway. Anything else, make sure it is dead.
+        if (child.exitCode === null) child.kill();
+      }
     } else child.kill("SIGKILL");
     await exited;
     desktop = null;
