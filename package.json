@@ -5,7 +5,7 @@
   "private": true,
   "description": "A persistent desktop workspace for projects, terminals, and AI conversations.",
   "author": "Relay contributors",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "node scripts/dev.cjs",

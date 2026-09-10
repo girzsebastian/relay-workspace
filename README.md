@@ -199,3 +199,11 @@ Public releases need Apple signing/notarization and Windows signing. Packaging c
 Relevant official references: [Codex app server](https://learn.chatgpt.com/docs/app-server), [Claude Code authentication](https://code.claude.com/docs/en/authentication), [Claude integration restrictions](https://code.claude.com/docs/en/legal-and-compliance), [OpenAI Responses](https://developers.openai.com/api/reference/typescript/resources/responses/methods/create), [Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create), [Electron security](https://www.electronjs.org/docs/latest/tutorial/security), and [node-pty](https://github.com/microsoft/node-pty). Provider policies and interfaces can change; recheck before shipping integrations.
 
 Relay is an independent project, not affiliated with OpenAI, Anthropic, Cursor, or Microsoft. The name is a working title; branding availability has not been checked.
+
+## Licence
+
+**GNU Affero General Public License v3.0 or later.** Use it, modify it, self-host it, fork it. The one condition worth knowing: if you offer a modified Relay to other people over a network, you have to publish that version's source. See [LICENSE](LICENSE).
+
+Contributions are accepted under a [Contributor License Agreement](CLA.md). You keep the copyright to everything you write; it grants a licence so a hosted Relay can be offered under other terms later without tracking down every contributor. Nothing contributed ever leaves the AGPL version.
+
+Relay was MIT licensed until 2026-09-10. Anything obtained under those terms stays available under them; the change applies to the work from that point forward.

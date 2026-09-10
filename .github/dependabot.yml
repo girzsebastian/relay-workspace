@@ -1,0 +1,27 @@
+version: 2
+
+# Dependency bumps land as pull requests rather than arriving silently. Grouped
+# so a week of patch releases is one review, not thirty.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      codemirror:
+        patterns: ["@codemirror/*", "@lezer/*", "codemirror"]
+      electron-build:
+        patterns: ["electron", "electron-builder", "@electron/*"]
+      types:
+        patterns: ["@types/*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # node-pty compiles against the Electron ABI; a bump here means rebuilding
+      # native modules on both platforms, so it is done deliberately.
+      - dependency-name: node-pty
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
