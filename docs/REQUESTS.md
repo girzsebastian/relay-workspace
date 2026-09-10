@@ -220,6 +220,6 @@ the conditions that would change the answer are in `docs/VSCODE-FORK.md`.
 
 ## Verification
 
-Every change above is covered by `npm test` (57 tests), `tsc --noEmit`,
+Every change above is covered by `npm test` (58 tests), `tsc --noEmit`,
 `npm run build`, and `npm run test:desktop`, which drives the real application
 and fails if any panel raises an error toast.
