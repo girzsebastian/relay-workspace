@@ -10,6 +10,18 @@ Describe implemented capabilities precisely. Missing measurements should be unkn
 
 Use separate feature branches and include validation evidence in pull requests. Do not commit keys, workspace databases, terminal logs, or user repository contents.
 
+## How a change reaches main
+
+`main` is protected. Nothing lands on it except through a pull request that has:
+
+- **a review from the maintainer** — every pull request requests one automatically, and a new push to the branch dismisses an approval that came before it;
+- **the desktop verification green on macOS and Windows**, and the CodeQL analysis clean;
+- **every review conversation resolved.**
+
+Merges are squashed, so history stays linear and each change is one commit. The branch is deleted afterwards. `main` cannot be force-pushed or deleted by anyone.
+
+You do not need your branch rebased onto the newest `main` to merge — required checks are what matter. If a merge lands something that conflicts semantically rather than textually, the desktop run on `main` catches it.
+
 ## Licensing
 
 Relay is [AGPL-3.0-or-later](LICENSE). Opening a pull request accepts the [contributor terms](CLA.md) — there is nothing to sign and no check to satisfy. You keep the copyright to what you write; the terms grant a licence so a hosted Relay can be offered under other terms later without tracking down every contributor. Nothing you contribute leaves the AGPL version.
