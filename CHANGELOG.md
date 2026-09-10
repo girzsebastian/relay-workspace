@@ -5,6 +5,14 @@ promise, but saved workspace state is migrated forward and never silently reset.
 
 ## Unreleased
 
+### Changed
+
+- **The CLA is no longer a check.** A bot that fails a pull request before anyone
+  has read it is friction, and it failed on the maintainer's own work. The terms
+  are unchanged and still keep the hosted-Relay option open; they are now
+  accepted by opening a pull request, stated in the template so nobody accepts
+  them unseen. Forks are treated exactly like branches.
+
 ## 0.6.0 — 2026-09-10
 
 The release that made Relay public.
@@ -24,10 +32,9 @@ The release that made Relay public.
 
 ### Added
 
-- Contributor License Agreement with a self-hosted signature workflow, CodeQL
-  analysis over the code that runs with the user's privileges, and grouped
-  Dependabot updates that leave `node-pty` alone because it compiles against
-  the Electron ABI.
+- Contributor terms accepted by opening a pull request, CodeQL analysis over the
+  code that runs with the user's privileges, and grouped Dependabot updates that
+  leave `node-pty` alone because it compiles against the Electron ABI.
 - `SECURITY.md` describing the security model plainly: what is isolated, what is
   not, and what the `everything` run mode actually hands to the CLI.
 - Screenshots in the README, produced by the test runner against a temporary

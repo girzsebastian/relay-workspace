@@ -12,7 +12,7 @@ Use separate feature branches and include validation evidence in pull requests. 
 
 ## Licensing
 
-Relay is [AGPL-3.0-or-later](LICENSE). Your first pull request will ask you to sign the [Contributor License Agreement](CLA.md) by posting one comment; a bot records it and you never sign again. You keep the copyright to what you write.
+Relay is [AGPL-3.0-or-later](LICENSE). Opening a pull request accepts the [contributor terms](CLA.md) — there is nothing to sign and no check to satisfy. You keep the copyright to what you write; the terms grant a licence so a hosted Relay can be offered under other terms later without tracking down every contributor. Nothing you contribute leaves the AGPL version.
 
 Anything you submit must be yours to license, including code written with an AI assistant. Work that is not your own creation belongs in a separate pull request that names its source and licence.
 

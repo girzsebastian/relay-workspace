@@ -25,3 +25,7 @@
 
 <!-- Migrations of saved state, a decision you are unsure about, follow-up work
      you deliberately left out. -->
+
+---
+
+By opening this pull request you accept the [contributor terms](../blob/main/CLA.md): you keep your copyright, and you grant a licence broad enough that a hosted Relay can be offered under other terms later. Nothing you contribute leaves the AGPL version. Nothing to sign.

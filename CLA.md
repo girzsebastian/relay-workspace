@@ -1,6 +1,10 @@
-# Relay Contributor License Agreement
+# Relay Contributor Terms
 
 Thank you for contributing to Relay.
+
+**You do not have to sign anything, and nothing here blocks your pull request.**
+Opening one is how you accept these terms — see [How you accept](#how-you-accept)
+at the end.
 
 This agreement is adapted from the [Apache Software Foundation Individual
 Contributor License Agreement v2.0](https://www.apache.org/licenses/icla.pdf),
@@ -135,11 +139,19 @@ warranty of any kind, express or implied.
 You agree to notify the Project if you become aware that any statement in this
 agreement is or becomes inaccurate.
 
----
+## How you accept
 
-**How to sign:** open a pull request. A bot will comment asking you to reply with
-the sentence it gives you. Your signature is recorded in this repository, and you
-only sign once.
+**By opening a pull request against this repository, you accept these terms for
+that contribution and every contribution you have already made.**
+
+There is no bot, no signature file, and no check standing between your work and a
+review. A pull request from a fork is treated exactly like one from a branch
+here. If you would rather not accept these terms, say so in the pull request and
+it will be discussed there rather than closed by a robot.
+
+The pull request template repeats this so nobody accepts it without seeing it.
+
+---
 
 _This document is a legal agreement adapted from a standard template. It has not
 been reviewed by a lawyer on behalf of this project. If you are contributing on
