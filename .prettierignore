@@ -1,0 +1,6 @@
+# Written by the CLA bot on every signature; not ours to format.
+.github/cla-signatures.json
+
+# Build output and packaged applications.
+dist/
+release/
