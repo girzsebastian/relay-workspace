@@ -1,6 +1,5 @@
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const { promisify } = require("node:util");
 
@@ -161,7 +160,10 @@ async function fileDiff(cwd, file) {
   // about it. Comparing it against nothing shows the whole file as added,
   // which is what it is.
   if (!tracked)
-    return git(cwd, ["diff", "--no-index", "--", os.devNull, file], {
+    // Not `os.devNull`: git special-cases the literal "/dev/null" in
+    // `--no-index` on every platform, including Windows, where the real
+    // device name is not a path it will open.
+    return git(cwd, ["diff", "--no-index", "--", "/dev/null", file], {
       output: true,
     }).catch(() => "");
   return git(cwd, ["diff", "HEAD", "--", file]);

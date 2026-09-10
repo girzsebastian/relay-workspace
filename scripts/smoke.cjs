@@ -998,7 +998,20 @@ async function until(fn, timeout = 12000) {
     }
     throw error;
   } finally {
-    if (desktop) await desktop.close();
+    if (desktop) {
+      // Held before closing: once the driver connection is gone, asking for
+      // the process throws. Closing the last window makes Relay hide rather
+      // than quit, which is the behaviour the app is meant to have, and on
+      // Windows that leaves the Electron process running behind the driver.
+      let child = null;
+      try {
+        child = desktop.process();
+      } catch {
+        child = null;
+      }
+      await desktop.close().catch(() => {});
+      if (child && child.exitCode === null && !child.killed) child.kill();
+    }
     fs.rmSync(dir, {
       recursive: true,
       force: true,
@@ -1006,7 +1019,14 @@ async function until(fn, timeout = 12000) {
       retryDelay: 200,
     });
   }
-})().catch((e) => {
-  console.error(e);
-  process.exitCode = 1;
-});
+})()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    // Everything above is awaited, including the screenshots. Leaving
+    // explicitly stops a stray handle from holding the run open: on Windows
+    // this printed PASS and then hung until CI killed the step.
+    process.exit(process.exitCode || 0);
+  });

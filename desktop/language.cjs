@@ -14,6 +14,12 @@ const SUPPORTED = new Set([
 ]);
 const isSupported = (file) => SUPPORTED.has(path.extname(file).toLowerCase());
 
+// TypeScript addresses files with forward slashes on every platform, and asks
+// the host for them that way. A Windows path stored with backslashes would
+// never match the buffer the editor sent, so the service would quietly answer
+// about the file on disk instead.
+const normalise = (file) => file.replace(/\\/g, "/");
+
 // One TypeScript language service per workspace, the same machinery VS Code
 // uses. The editor sends the buffer it is showing, which may be unsaved, so the
 // service answers about what the person is looking at rather than what is on
@@ -23,6 +29,7 @@ class LanguageServices {
     this.projects = new Map();
   }
   service(root) {
+    root = normalise(root);
     const existing = this.projects.get(root);
     if (existing) return existing;
     const overrides = new Map();
@@ -105,6 +112,7 @@ class LanguageServices {
     }
   }
   update(root, file, text) {
+    file = normalise(file);
     const project = this.service(root);
     if (project.overrides.get(file) === text) return project;
     project.overrides.set(file, text);
@@ -113,6 +121,7 @@ class LanguageServices {
     return project;
   }
   completions(root, file, offset, text) {
+    file = normalise(file);
     if (!isSupported(file)) return { items: [] };
     const project = this.update(root, file, text);
     const info = project.service.getCompletionsAtPosition(file, offset, {
@@ -134,6 +143,7 @@ class LanguageServices {
   // The signature and documentation for one entry, fetched only for the item
   // the person has highlighted.
   detail(root, file, offset, text, name) {
+    file = normalise(file);
     if (!isSupported(file)) return null;
     const project = this.update(root, file, text);
     const details = project.service.getCompletionEntryDetails(
@@ -152,6 +162,7 @@ class LanguageServices {
     };
   }
   diagnostics(root, file, text) {
+    file = normalise(file);
     if (!isSupported(file)) return [];
     const project = this.update(root, file, text);
     const all = [
@@ -172,6 +183,7 @@ class LanguageServices {
     }));
   }
   hover(root, file, offset, text) {
+    file = normalise(file);
     if (!isSupported(file)) return null;
     const project = this.update(root, file, text);
     const info = project.service.getQuickInfoAtPosition(file, offset);
@@ -184,9 +196,10 @@ class LanguageServices {
     };
   }
   forget(root) {
+    root = normalise(root);
     this.projects.get(root)?.service.dispose?.();
     this.projects.delete(root);
   }
 }
 
-module.exports = { LanguageServices, isSupported };
+module.exports = { LanguageServices, isSupported, normalise };

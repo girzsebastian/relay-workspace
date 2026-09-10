@@ -970,6 +970,9 @@ test("git helpers read a real repository without a shell", async (t) => {
   const { promisify } = require("node:util");
   const run = promisify(execFile);
   await run("git", ["init", "-b", "main"], { cwd: dir });
+  // Without this, Windows checks files out with CRLF and every content
+  // assertion below drifts by one byte a line.
+  await run("git", ["config", "core.autocrlf", "false"], { cwd: dir });
   await run("git", ["config", "user.email", "test@example.com"], { cwd: dir });
   await run("git", ["config", "user.name", "Relay Test"], { cwd: dir });
   fs.writeFileSync(path.join(dir, "kept.txt"), "one\n");
@@ -1134,6 +1137,7 @@ test("search spans every repository in a workspace and labels each result", asyn
     const repo = path.join(dir, name);
     fs.mkdirSync(repo, { recursive: true });
     await run("git", ["init", "-b", "main"], { cwd: repo });
+    await run("git", ["config", "core.autocrlf", "false"], { cwd: repo });
     fs.writeFileSync(path.join(repo, "app.txt"), `TOKEN in ${name}\n`);
     fs.writeFileSync(path.join(repo, "ignored.log"), "TOKEN hidden\n");
     fs.writeFileSync(path.join(repo, ".gitignore"), "ignored.log\n");
@@ -1397,6 +1401,9 @@ test("undoing one hunk leaves the other edits in the file", async (t) => {
     lines(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]),
   );
   await run("git", ["init", "-b", "main"], { cwd: dir });
+  // Without this, Windows checks files out with CRLF and every content
+  // assertion below drifts by one byte a line.
+  await run("git", ["config", "core.autocrlf", "false"], { cwd: dir });
   await run("git", ["config", "user.email", "t@example.com"], { cwd: dir });
   await run("git", ["config", "user.name", "T"], { cwd: dir });
   await run("git", ["add", "."], { cwd: dir });
@@ -1929,6 +1936,9 @@ test("undoing a reply restores what it changed and leaves the rest alone", async
   fs.writeFileSync(path.join(dir, "kept.txt"), "original\n");
   fs.writeFileSync(path.join(dir, "mine.txt"), "mine\n");
   await run("git", ["init", "-b", "main"], { cwd: dir });
+  // Without this, Windows checks files out with CRLF and every content
+  // assertion below drifts by one byte a line.
+  await run("git", ["config", "core.autocrlf", "false"], { cwd: dir });
   await run("git", ["config", "user.email", "t@example.com"], { cwd: dir });
   await run("git", ["config", "user.name", "T"], { cwd: dir });
   await run("git", ["add", "."], { cwd: dir });
@@ -1974,7 +1984,15 @@ test("undoing a reply restores what it changed and leaves the rest alone", async
 });
 
 test("the language service answers about the buffer, not the file on disk", (t) => {
-  const { LanguageServices, isSupported } = require("../desktop/language.cjs");
+  const {
+    LanguageServices,
+    isSupported,
+    normalise,
+  } = require("../desktop/language.cjs");
+  // TypeScript addresses files with forward slashes everywhere. A Windows path
+  // kept verbatim would never match the buffer the editor sent, and the service
+  // would answer about the file on disk instead of the unsaved edit.
+  assert.equal(normalise("D:\\a\\relay\\app.ts"), "D:/a/relay/app.ts");
   const dir = temp(t);
   const file = path.join(dir, "sample.ts");
   fs.writeFileSync(file, "const clients: string[] = [];\n");
@@ -2039,6 +2057,7 @@ test("changed lines are reported in the file's own coordinates", async (t) => {
   const repo = path.join(dir, "frontend");
   fs.mkdirSync(repo);
   await run("git", ["init", "-b", "main"], { cwd: repo });
+  await run("git", ["config", "core.autocrlf", "false"], { cwd: repo });
   await run("git", ["config", "user.email", "test@example.com"], { cwd: repo });
   await run("git", ["config", "user.name", "Relay Test"], { cwd: repo });
   const before = ["one", "two", "three", "four", "five", "six", "seven"];
@@ -2085,6 +2104,9 @@ test("a file the agent just created counts and diffs as wholly added", async (t)
   const { promisify } = require("node:util");
   const run = promisify(execFile);
   await run("git", ["init", "-b", "main"], { cwd: dir });
+  // Without this, Windows checks files out with CRLF and every content
+  // assertion below drifts by one byte a line.
+  await run("git", ["config", "core.autocrlf", "false"], { cwd: dir });
   await run("git", ["config", "user.email", "test@example.com"], { cwd: dir });
   await run("git", ["config", "user.name", "Relay Test"], { cwd: dir });
   fs.writeFileSync(path.join(dir, "kept.txt"), "one\n");
