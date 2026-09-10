@@ -56,8 +56,8 @@ badge, the repository name, per-file replace and dismiss.
 
 **Done.** Search covers the whole workspace: each repository through
 `git ls-files`, so its own ignore rules apply, plus the loose files outside any
-repository. On Alvanda that is 6,260 files scanned, with `alvanda-backend`
-shown next to each result.
+repository. On a real multi-repository workspace that runs to thousands of
+files, with the owning repository shown next to each result.
 
 ## 5. Source control
 

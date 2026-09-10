@@ -4,7 +4,13 @@
 
 Relay addresses a familiar problem: a terminal closes or the computer restarts, and you have to reconstruct what you were doing. It puts your projects, saved conversations, terminal history, editor tabs and drafts, and usage records in one place.
 
-**Status: desktop alpha 0.3.1.** One Electron codebase targets macOS and Windows. See [validation](docs/VALIDATION.md) for what has actually been tested. This is not yet a hosted service or a production subscription product.
+**Status: desktop alpha 0.5.1.** One Electron codebase targets macOS and Windows. See [validation](docs/VALIDATION.md) for what has actually been tested. This is not yet a hosted service or a production subscription product, and released builds are unsigned.
+
+![The Relay workspace: explorer, split editors, terminal panel and AI chat](docs/images/workspace.png)
+
+## Install
+
+There are prebuilt macOS builds on the [releases page](https://github.com/girzsebastian/relay-workspace/releases), but they are **unsigned and not notarized**: macOS will refuse to open them until you allow the app in System Settings → Privacy & Security. Until signing is in place, building from source is the honest recommendation.
 
 ## Start locally
 
@@ -26,7 +32,10 @@ Open a project folder. Then use **Codex**, **Claude Code**, **OpenCode**, or **T
 
 For a graphical conversation, open **Settings & providers** and choose where chat runs.
 
-- **An installed CLI** (Claude Code, Codex, or OpenCode) runs on this computer with that tool's own login, so chat spends the subscription you already pay for. No API key is required, and the model ID is optional. Chat replies run non-interactively and read-only: Claude Code with no tools, Codex in a read-only sandbox, OpenCode with its `plan` agent. A chat reply cannot edit project files.
+- **An installed CLI** (Claude Code, Codex, or OpenCode) runs on this computer with that tool's own login, so chat spends the subscription you already pay for. No API key is required, and the model ID is optional.
+  - In **ask** mode a reply is read-only and cannot touch your files: Claude Code with no tools, Codex in a read-only sandbox, OpenCode with its `plan` agent.
+  - In **plan** mode the agent may read the project and propose work, but not write.
+  - In **agent** mode it edits files. What it may run is governed by the run mode: an allowed list of read and git commands by default, anything outside it raised as an approval card, and an explicit `everything` mode that hands the CLI full permissions. Read [SECURITY.md](SECURITY.md) before using that last one.
 - **An API provider** (OpenAI or Anthropic) needs an exact model ID available to your account and an API key, and is billed separately by that provider.
 
 Relay does not convert one subscription into another provider's credits; it runs the tool you selected. No model request is made merely by launching Relay or saving settings.
@@ -47,12 +56,18 @@ Relay does not convert one subscription into another provider's credits; it runs
 - Agents have editable names and instructions, saved memory, an optional project skill, a persistent task queue, and run history. Tasks start explicitly and move to review when their CLI session exits.
 - Language-aware code coloring, including PHP, Python, YAML, CSS, HTML, JavaScript/TypeScript, JSON, SQL, shell scripts, and Dockerfiles. File-type badges and measured terminal-output activity add visual context.
 - Open the selected project in an installed Cursor or VS Code application.
-- Source control: branch and upstream state, changed files with per-file line counts, coloured diffs, commit, push or publish a branch, and per-file discard. Push never creates an upstream silently, and discard never deletes an untracked file.
+- Source control across **every repository in the workspace**, not just the folder you opened: a workspace often holds a frontend, a backend and a plugin side by side, and each gets its own branch and upstream state, changed files with per-file line counts, sync, commit, refresh and a full actions menu. Push never creates an upstream silently, and discard never deletes an untracked file.
+- Side-by-side diffs with per-hunk **Undo** and **Keep**, and inline decorations in the editor itself: green behind added lines, a stronger green for an added comment, red where lines were removed, a bar beside the changed line numbers, and a strip down the right edge covering the whole file. A file the agent created reads as wholly added rather than `+0 -0`.
 - Git decorations in the file explorer, including a mark on folders that contain changes.
 - Project search with match case, whole word, regular expressions, and include/exclude globs. Ignored files are skipped, binary files are not scanned.
 - A container view listing Docker containers, attributed to a workspace by their compose working directory. Relay starts nothing on its own.
 - Settings grouped into categories with a search box across every setting.
 - Saved, multi-turn chats backed either by an installed CLI (Claude Code, Codex, OpenCode) or by the OpenAI Responses and Anthropic Messages APIs.
+- Agent conversations that **stream what they are doing**: each step as it happens, "Worked for 2m", markdown replies, and a card listing every file that reply changed with a way back. A dropdown above the chat collects every file changed across the whole conversation.
+- Three conversation modes (agent, plan, ask) and three run modes. Outside the allowed list, a command becomes an **approval card** — Accept, Skip, or Always allow for this workspace — rather than a silent refusal.
+- Agents can open their own **read-only terminal** through a loopback MCP bridge, so "run the dev server" works and you can watch it.
+- **Crash recovery you can read**: reopening after a crash lists what was running, when it stopped and what it was doing, taken from what that session actually printed. Sessions with nothing recoverable retire themselves instead of piling up.
+- Editor intelligence from the project's own TypeScript service: completions, diagnostics and hover types, answered about the buffer on screen rather than the file on disk.
 - Four chat profiles: Builder, Architect, Reviewer, and Product partner.
 - Optional project `SKILL.md` instructions attached to new API conversations.
 - OS-encrypted API key storage with Electron safeStorage.
@@ -77,6 +92,17 @@ Open an agent’s **Details** to edit its instructions and memory, queue work, o
 Only provider sessions launched using Relay’s controls are indexed automatically. Commands typed inside a general shell and processes started in another application are not detected or imported.
 
 The agent/runtime separation is inspired by [Rakazo](https://github.com/elie222/rakazo). See the [assessment and implementation boundaries](docs/RAKAZO.md).
+
+## What it looks like
+
+|                                                                                                                   |                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| ![Source control across every repository, with the diff drawn into the editor](docs/images/source-control.png)    | ![Terminal grid with four live PTY sessions](docs/images/terminal-grid.png)                                    |
+| **Source control and inline diff.** Every repository in the workspace, changed lines coloured in the file itself. | **Terminal grid.** Two, four or six persistent PTY sessions, resizable, detachable, reattachable.              |
+| ![The agent board, showing each agent and its sessions](docs/images/agent-board.png)                              | ![Project search with globs and regular expressions](docs/images/search.png)                                   |
+| **Agent board.** Every Codex, Claude Code and OpenCode session Relay launched, with its tasks and history.        | **Search.** Whole workspace, each repository through its own ignore rules, with globs and regular expressions. |
+
+Screenshots are produced by the test runner against a temporary fixture project. Nothing in them is fabricated activity.
 
 ## Exactly what persists
 
@@ -166,6 +192,9 @@ Public releases need Apple signing/notarization and Windows signing. Packaging c
 - [Architecture and next milestones](docs/ARCHITECTURE.md)
 - [Validation evidence and limitations](docs/VALIDATION.md)
 - [Contributing](CONTRIBUTING.md)
+- [Security model and how to report a vulnerability](SECURITY.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [What was asked for, and what is still owed](docs/REQUESTS.md)
 
 Relevant official references: [Codex app server](https://learn.chatgpt.com/docs/app-server), [Claude Code authentication](https://code.claude.com/docs/en/authentication), [Claude integration restrictions](https://code.claude.com/docs/en/legal-and-compliance), [OpenAI Responses](https://developers.openai.com/api/reference/typescript/resources/responses/methods/create), [Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create), [Electron security](https://www.electronjs.org/docs/latest/tutorial/security), and [node-pty](https://github.com/microsoft/node-pty). Provider policies and interfaces can change; recheck before shipping integrations.
 

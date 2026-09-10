@@ -369,6 +369,18 @@ async function until(fn, timeout = 12000) {
       );
     };
     await checkViewport();
+    // These screenshots end up in the README, so the shell prompt must not
+    // carry the machine's user and host name.
+    if (process.platform !== "win32") {
+      await api("terminal:write", {
+        id: shell.id,
+        data: "PS1='launchpad %% ' PROMPT='launchpad %% '; clear\r",
+      });
+      await until(async () => {
+        const shown = await page.locator(".xterm-rows").first().innerText();
+        return shown.includes("launchpad %") && !shown.includes("@");
+      });
+    }
     await screenshot({ path: path.join(root, "artifacts/workspace.png") });
     console.log("Desktop check: layouts passed");
 
@@ -600,8 +612,16 @@ async function until(fn, timeout = 12000) {
       .click();
     console.log("Desktop check: panels passed");
     const shells = [shell];
-    for (let i = 1; i < 4; i++)
-      shells.push(await api("terminal:start", { projectId, kind: "shell" }));
+    for (let i = 1; i < 4; i++) {
+      const extra = await api("terminal:start", { projectId, kind: "shell" });
+      shells.push(extra);
+      // Same reason as the first shell: these panes end up in the README.
+      if (process.platform !== "win32")
+        await api("terminal:write", {
+          id: extra.id,
+          data: "PS1='launchpad %% ' PROMPT='launchpad %% '; clear\r",
+        });
+    }
     await page.getByRole("button", { name: "Grid view", exact: true }).click();
     await page
       .getByRole("button", { name: "4 terminal panes", exact: true })
@@ -732,6 +752,18 @@ async function until(fn, timeout = 12000) {
       async () => (await page.locator(".session-list").count()) === 0,
     );
     await checkViewport();
+    // The panes have already been asserted through their logs; clear the
+    // screens so the published screenshot shows the app, not the setup.
+    if (process.platform !== "win32") {
+      for (const pane of shells)
+        await api("terminal:write", { id: pane.id, data: "clear\r" });
+      await until(async () => {
+        const shown = await page.locator(".xterm-rows").allInnerTexts();
+        return (
+          shown.length >= 4 && shown.every((text) => !text.includes("PS1="))
+        );
+      });
+    }
     await screenshot({
       path: path.join(root, "artifacts/terminal-grid.png"),
     });

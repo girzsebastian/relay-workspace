@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Relay does not do what it says it does
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste terminal output, chat transcripts or diffs from a
+        private repository. Reduce it to the part that shows the problem.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a workspace with two repositories in subfolders
+        2. Open Source control
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Relay version
+      description: The version in the About panel, or the commit you built.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider involved
+      description: Claude Code, Codex, OpenCode, an API provider, or none.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, the error toast text, or what you already tried.

@@ -269,9 +269,9 @@ const SKIP_SCAN = new Set([
   "target",
 ]);
 
-// A workspace folder is rarely a single repository. Alvanda, for example, holds
-// alvanda-frontend, alvanda-backend and plugin/scraper-v2 side by side, and the
-// folder itself is not a checkout at all.
+// A workspace folder is rarely a single repository. A product folder often holds
+// its frontend, its backend and a plugin side by side, and the folder itself is
+// not a checkout at all.
 function discoverRepositories(root, { maxDepth = 3, limit = 40 } = {}) {
   const found = [];
   const walk = (dir, relative, depth) => {

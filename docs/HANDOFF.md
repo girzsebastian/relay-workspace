@@ -1,4 +1,4 @@
-# Relay handoff for Claude Code
+# Handoff notes
 
 Updated: 2026-09-08
 
@@ -8,7 +8,7 @@ Read this file first when continuing work in the Relay repository. It is a hando
 
 Suggested first instruction:
 
-> Read `CLAUDE_HANDOFF.md`, inspect the current repository and git status, then continue from the current state. Do not undo existing work without explaining why.
+> Read `docs/HANDOFF.md`, inspect the current repository and git status, then continue from the current state. Do not undo existing work without explaining why.
 
 ## Product
 
