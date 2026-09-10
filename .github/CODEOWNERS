@@ -1,0 +1,3 @@
+# Every pull request requests a review from the maintainer automatically.
+# Branch protection requires that review before anything reaches main.
+* @girzsebastian
