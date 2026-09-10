@@ -5,6 +5,10 @@ promise, but saved workspace state is migrated forward and never silently reset.
 
 ## Unreleased
 
+## 0.6.0 — 2026-09-10
+
+The release that made Relay public.
+
 ### Changed
 
 - **Licence: MIT → GNU AGPL-3.0-or-later.** Relay stays open source and anyone
@@ -13,11 +17,30 @@ promise, but saved workspace state is migrated forward and never silently reset.
   accepted under [CLA.md](CLA.md), which keeps the option of a hosted Relay
   under other terms. Everything already published under MIT stays available
   under MIT; the change applies going forward.
+- **vite 6 → 8** and **@xterm/xterm 5 → 6**, with `@vitejs/plugin-react` 6 and
+  the fit addon at 0.11, which is what those two majors actually needed.
+  Production builds are noticeably faster and chunked the same way.
+- Explorer rows tightened from 25px to 21px.
 
 ### Added
 
 - Contributor License Agreement with a self-hosted signature workflow, CodeQL
-  analysis, and grouped Dependabot updates.
+  analysis over the code that runs with the user's privileges, and grouped
+  Dependabot updates that leave `node-pty` alone because it compiles against
+  the Electron ABI.
+- `SECURITY.md` describing the security model plainly: what is isolated, what is
+  not, and what the `everything` run mode actually hands to the CLI.
+- Screenshots in the README, produced by the test runner against a temporary
+  fixture project.
+
+### Fixed
+
+- Windows CI, red since before this work: the desktop test printed PASS and hung
+  until the step timed out; fixture repositories did not pin `core.autocrlf`;
+  `diff --no-index` was handed `os.devNull`, a device name git will not open;
+  and the TypeScript service keyed its buffer overrides on the path it was
+  given, so on Windows the override never matched and it answered about the file
+  on disk instead of the unsaved edit in front of the person.
 
 ## 0.5.1
 

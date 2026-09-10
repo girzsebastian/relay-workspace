@@ -1,7 +1,7 @@
 {
   "name": "relay-workspace",
   "productName": "Relay",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "A persistent desktop workspace for projects, terminals, and AI conversations.",
   "author": "Relay contributors",
